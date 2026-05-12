@@ -1,0 +1,3 @@
+# Este diretório armazena datasets de amostra gerados pelo script:
+#   python scripts/generate_dataset.py
+# Os arquivos .csv e .permafrost gerados são ignorados pelo .gitignore.
