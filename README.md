@@ -24,6 +24,7 @@ Empresas com grandes volumes de dados históricos pagam caro para mantê-los em 
 
 ## 🏗️ Arquitetura do Pipeline (PermafrostCodec v3)
 
+
 ```
 ENTRADA (Excel / CSV / DataFrame)
         │
