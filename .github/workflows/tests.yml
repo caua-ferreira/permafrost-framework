@@ -15,22 +15,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          pip install -e ".[dev]"
-
-      - name: Run tests
-        run: |
-          pytest tests/ -v --tb=short
-
-      - name: Upload coverage
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Test
+        run: pytest tests/ -v --tb=short
+      - name: Coverage (3.11 only)
         if: matrix.python-version == '3.11'
         run: |
           pip install pytest-cov
-          pytest tests/ --cov=src --cov-report=xml
+          pytest tests/ --cov=src/permafrost --cov-report=xml
