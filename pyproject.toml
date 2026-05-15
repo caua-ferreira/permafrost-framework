@@ -7,14 +7,13 @@ name = "permafrost-framework"
 version = "0.6.0"
 description = "Distributed intelligent compression for long-term data archival"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [{ name = "Permafrost Contributors" }]
 keywords = ["compression","archival","lzma","cold-storage","permafrost","duckdb","distributed"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
