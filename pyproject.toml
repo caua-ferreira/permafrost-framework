@@ -32,8 +32,9 @@ s3        = ["boto3>=1.26.0"]
 gcs       = ["google-cloud-storage>=2.10.0"]
 azure     = ["azure-storage-blob>=12.17.0"]
 all-cloud = ["boto3>=1.26.0","google-cloud-storage>=2.10.0","azure-storage-blob>=12.17.0"]
-spark     = ["pyspark>=4.0"]
-dev       = ["pytest>=7.0","pytest-cov","build","twine"]
+spark      = ["pyspark>=4.0"]
+kubernetes = ["kopf>=1.36.0","kubernetes>=28.0.0"]
+dev        = ["pytest>=7.0","pytest-cov","build","twine","pyinstaller>=6.0","kopf>=1.36.0"]
 
 [project.urls]
 Homepage  = "https://github.com/caua-ferreira/permafrost-framework"
@@ -44,3 +45,6 @@ permafrost = "permafrost.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::UserWarning", "ignore::DeprecationWarning"]
