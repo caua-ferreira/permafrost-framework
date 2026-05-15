@@ -75,6 +75,13 @@ from permafrost.chunk_mode import (
 # ── Encryption ────────────────────────────────────────────────────────────────
 from permafrost.crypto import KeyProvider, LocalKeyProvider
 
+# ── Schema evolution ──────────────────────────────────────────────────────────
+from permafrost.schema_evolution import (
+    SchemaEvolutionError,
+    apply_schema_evolution,
+    schema_diff,
+)
+
 # ── Catalog (DuckDB index) ────────────────────────────────────────────────────
 from permafrost.catalog import PermafrostCatalog
 
@@ -121,6 +128,8 @@ __all__ = [
     "PermafrostMaster", "PermafrostWorker", "PermafrostClient",
     # Encryption
     "KeyProvider", "LocalKeyProvider",
+    # Schema evolution
+    "SchemaEvolutionError", "apply_schema_evolution", "schema_diff",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
 try:

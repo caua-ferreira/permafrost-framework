@@ -495,6 +495,7 @@ def thaw(
     filter: Optional[dict] = None,
     row_range: Optional[tuple] = None,
     key=None,
+    schema_override=None,
 ) -> pd.DataFrame:
     """Descomprime um arquivo .permafrost de volta para DataFrame.
 
@@ -568,6 +569,9 @@ def thaw(
         col_f,val_f=next(iter(filter.items()))
         if col_f in result.columns:
             result=result[result[col_f].astype(str)==str(val_f)].reset_index(drop=True)
+    if schema_override is not None:
+        from permafrost.schema_evolution import apply_schema_evolution
+        result = apply_schema_evolution(result, schema_override)
     return result
 
 # ── AUDIT ─────────────────────────────────────────────────────────────────────
@@ -611,7 +615,9 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
     h=_read_header(raw[:131072]); index=_read_sparse_index(raw)
     codec_name={CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(h['codec'],'?')
     lossy={}
+    stored_schema={}
     for col,m in h['manifests'].items():
+        stored_schema[col]=m.get('dtype','object')
         if m.get('predictor') in (PRED_FLOAT32, PRED_FLOAT16):
             lossy[col]={'predictor':m['predictor'],
                         'precision_bits':m.get('precision_bits',32),
@@ -621,7 +627,8 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
             'freeze_date':pd.Timestamp(h['freeze_ts'],unit='s').isoformat(),
             'orig_rows':h['orig_rows'],'n_chunks':h['n_chunks'],
             'chunk_rows':h['chunk_rows'],'file_size_mb':round(os.path.getsize(path)/1e6,3),
-            'columns':list(h['manifests'].keys()),'index_entries':index,
+            'columns':list(h['manifests'].keys()),'stored_schema':stored_schema,
+            'index_entries':index,
             'partition_col':index[0]['part_col'] if index else None,
             'partition_keys':[e['part_key'] for e in index],
             'comment':h['comment'],

@@ -275,6 +275,7 @@ def thaw_iter(
     filter: Optional[dict] = None,
     batch_size: Optional[int] = None,
     key=None,
+    schema_override=None,
 ) -> Generator[pd.DataFrame, None, None]:
     """Itera sobre chunks de um ``.permafrost`` sem carregar tudo na memória.
 
@@ -340,6 +341,9 @@ def thaw_iter(
         n_rows    = entry['row_end'] - entry['row_start'] + 1
         df_c      = _parse_chunk(chunk_raw, manifests, n_rows)
 
+        if schema_override is not None:
+            from permafrost.schema_evolution import apply_schema_evolution
+            df_c = apply_schema_evolution(df_c, schema_override)
         if batch_size is None:
             yield df_c
         else:
