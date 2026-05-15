@@ -31,7 +31,6 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # Cobertura de testes
 .coverage
