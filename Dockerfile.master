@@ -1,16 +1,16 @@
 # ── Permafrost Master Node ────────────────────────────────────────────────────
 # Imagem do nó coordenador do cluster Permafrost.
-# Publicada em: docker.io/SEU_USUARIO/permafrost-master
+# Publicada em: docker.io/caua-ferreira/permafrost-master
 #
 # Uso:
-#   docker run -p 8700:8700 SEU_USUARIO/permafrost-master
-#   docker run -p 8700:8700 -e PERMAFROST_MAX_RETRIES=5 SEU_USUARIO/permafrost-master
+#   docker run -p 8700:8700 caua-ferreira/permafrost-master
+#   docker run -p 8700:8700 -e PERMAFROST_MAX_RETRIES=5 caua-ferreira/permafrost-master
 
 FROM python:3.11-slim
 
 LABEL maintainer="Permafrost Contributors"
 LABEL description="Permafrost Cluster Master — job coordinator"
-LABEL version="0.5.1"
+LABEL version="0.6.3"
 
 # Dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \

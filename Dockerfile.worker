@@ -1,18 +1,18 @@
 # ── Permafrost Worker Node ────────────────────────────────────────────────────
 # Imagem do nó de processamento do cluster Permafrost.
-# Publicada em: docker.io/SEU_USUARIO/permafrost-worker
+# Publicada em: docker.io/caua-ferreira/permafrost-worker
 #
 # Uso:
 #   docker run \
 #     -e PERMAFROST_MASTER_URL=http://master:8700 \
 #     -v /meus/dados:/data \
-#     SEU_USUARIO/permafrost-worker
+#     caua-ferreira/permafrost-worker
 
 FROM python:3.11-slim
 
 LABEL maintainer="Permafrost Contributors"
 LABEL description="Permafrost Cluster Worker — compression node"
-LABEL version="0.5.1"
+LABEL version="0.6.3"
 
 # Dependências do sistema — inclui zpaq para CODEC_ZPAQ
 RUN apt-get update && apt-get install -y --no-install-recommends \
