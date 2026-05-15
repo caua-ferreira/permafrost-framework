@@ -11,10 +11,6 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/caua-ferreira/permafrost-framework/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-mkdocs-00D4FF)](https://caua-ferreira.github.io/permafrost-framework)
 
-[![GitHub Stars](https://img.shields.io/github/stars/caua-ferreira/permafrost-framework?style=social)](https://github.com/caua-ferreira/permafrost-framework/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/caua-ferreira/permafrost-framework?style=social)](https://github.com/caua-ferreira/permafrost-framework/network/members)
-[![Open Issues](https://img.shields.io/github/issues/caua-ferreira/permafrost-framework)](https://github.com/caua-ferreira/permafrost-framework/issues)
-[![Open PRs](https://img.shields.io/github/issues-pr/caua-ferreira/permafrost-framework)](https://github.com/caua-ferreira/permafrost-framework/pulls)
 
 **Plataforma distribuída de compressão inteligente para arquivamento digital de longo prazo.**
 

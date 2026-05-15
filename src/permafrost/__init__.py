@@ -27,7 +27,7 @@ Links:
     Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
-__version__  = "0.7.0"
+__version__  = "0.7.1"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 

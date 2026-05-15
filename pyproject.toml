@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "permafrost-framework"
-version = "0.7.0"
+version = "0.7.1"
 description = "Distributed intelligent compression for long-term data archival"
 readme = "README.md"
 license = "Apache-2.0"
@@ -39,8 +39,11 @@ kubernetes = ["kopf>=1.36.0","kubernetes>=28.0.0"]
 dev        = ["pytest>=7.0","pytest-cov","build","twine","pyinstaller>=6.0","kopf>=1.36.0"]
 
 [project.urls]
-Homepage  = "https://github.com/caua-ferreira/permafrost-framework"
-Repository = "https://github.com/caua-ferreira/permafrost-framework"
+Homepage      = "https://caua-ferreira.github.io/permafrost-framework"
+Documentation = "https://caua-ferreira.github.io/permafrost-framework"
+Repository    = "https://github.com/caua-ferreira/permafrost-framework"
+"Bug Tracker" = "https://github.com/caua-ferreira/permafrost-framework/issues"
+Changelog     = "https://github.com/caua-ferreira/permafrost-framework/blob/main/CHANGELOG.md"
 
 [project.scripts]
 permafrost = "permafrost.cli:app"
