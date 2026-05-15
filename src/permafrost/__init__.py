@@ -23,8 +23,8 @@ Exemplos:
     >>> info = pf.audit("vendas.permafrost")   # sem descomprimir
 
 Links:
-    GitHub: https://github.com/SEU_USUARIO/permafrost-framework
-    Docs:   https://github.com/SEU_USUARIO/permafrost-framework/tree/main/docs
+    GitHub: https://github.com/caua-ferreira/permafrost-framework
+    Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
 __version__  = "0.6.0"

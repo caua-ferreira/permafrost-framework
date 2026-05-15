@@ -36,8 +36,8 @@ spark     = ["pyspark>=4.0"]
 dev       = ["pytest>=7.0","pytest-cov","build","twine","pyspark>=4.0"]
 
 [project.urls]
-Homepage  = "https://github.com/SEU_USUARIO/permafrost-framework"
-Repository = "https://github.com/SEU_USUARIO/permafrost-framework"
+Homepage  = "https://github.com/caua-ferreira/permafrost-framework"
+Repository = "https://github.com/caua-ferreira/permafrost-framework"
 
 [project.scripts]
 permafrost = "permafrost.cli:app"

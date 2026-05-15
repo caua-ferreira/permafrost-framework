@@ -13,7 +13,7 @@ version: "3.9"
 services:
 
   master:
-    image: SEU_USUARIO/permafrost-master:latest
+    image: caua-ferreira/permafrost-master:latest
     container_name: permafrost-master
     ports:
       - "8700:8700"
@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: SEU_USUARIO/permafrost-worker:latest
+    image: caua-ferreira/permafrost-worker:latest
     environment:
       PERMAFROST_MASTER_URL: "http://master:8700"
     volumes:

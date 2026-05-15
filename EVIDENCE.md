@@ -398,7 +398,7 @@ Fluxo de um job:
 ## Reprodução
 
 ```bash
-git clone https://github.com/SEU_USUARIO/permafrost-framework
+git clone https://github.com/caua-ferreira/permafrost-framework
 cd permafrost-framework
 pip install -e '.[dev]'
 pytest tests/ -v

@@ -124,7 +124,7 @@ Para **0.678 MB** de dados comprimidos (original: 5.67 MB):
 ## Reproduzir
 
 ```bash
-git clone https://github.com/SEU_USUARIO/permafrost-framework
+git clone https://github.com/caua-ferreira/permafrost-framework
 cd permafrost-framework
 pip install -e '.[dev]'
 

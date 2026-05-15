@@ -2,7 +2,7 @@
 
 <div class="pf-badges" markdown>
 [![PyPI version](https://badge.fury.io/py/permafrost-framework.svg)](https://pypi.org/project/permafrost-framework/)
-[![Tests](https://github.com/SEU_USUARIO/permafrost-framework/actions/workflows/tests.yml/badge.svg)](https://github.com/SEU_USUARIO/permafrost-framework/actions)
+[![Tests](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml/badge.svg)](https://github.com/caua-ferreira/permafrost-framework/actions)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.10%2B-yellow)](https://pypi.org/project/permafrost-framework/)
 </div>

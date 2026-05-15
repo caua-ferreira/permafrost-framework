@@ -1,6 +1,6 @@
 # Especificação do Formato .permafrost
 
-A especificação formal está em [`docs/FORMAT_SPEC.md`](https://github.com/SEU_USUARIO/permafrost-framework/blob/main/docs/FORMAT_SPEC.md).
+A especificação formal está em [`docs/FORMAT_SPEC.md`](https://github.com/caua-ferreira/permafrost-framework/blob/main/docs/FORMAT_SPEC.md).
 
 ## Visão geral do layout
 

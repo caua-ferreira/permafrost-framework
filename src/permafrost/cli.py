@@ -37,7 +37,7 @@ TIER_PRICES = {"s3": 0.023, "s3-ia": 0.0125, "glacier": 0.004, "glacier-deep": 0
 def _load():
     from permafrost.codec import freeze as pf_freeze, thaw as pf_thaw, audit as pf_audit
     from permafrost.codec import CODEC_LZMA2, CODEC_ZSTD, QUANT_NONE, QUANT_MEDIUM
-    from permafrost_schema_detector import SchemaDetector
+    from permafrost.schema_detector import SchemaDetector
     return pf_freeze, pf_thaw, pf_audit, SchemaDetector
 
 def _header():
@@ -293,6 +293,8 @@ def verify(
         console.print(Panel("[bold green]✓ Arquivo íntegro — todos os SHA-256 verificados[/]", border_style="green"))
     else:
         console.print(Panel("[bold red]✗ Falha de integridade detectada[/]", border_style="red"))
+        console.print()
+        raise typer.Exit(1)
     console.print()
 
 

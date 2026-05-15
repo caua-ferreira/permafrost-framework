@@ -1,7 +1,7 @@
 site_name: Permafrost Data Framework
 site_description: Distributed intelligent compression for long-term data archival — SQL, NoSQL, Social Media
-site_url: https://SEU_USUARIO.github.io/permafrost-framework
-repo_url: https://github.com/SEU_USUARIO/permafrost-framework
+site_url: https://caua-ferreira.github.io/permafrost-framework
+repo_url: https://github.com/caua-ferreira/permafrost-framework
 repo_name: permafrost-framework
 copyright: Copyright &copy; 2026 Permafrost Contributors — Apache 2.0
 
@@ -44,7 +44,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/SEU_USUARIO/permafrost-framework
+      link: https://github.com/caua-ferreira/permafrost-framework
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/permafrost-framework
   version:

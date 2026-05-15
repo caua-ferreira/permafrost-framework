@@ -187,10 +187,10 @@ Isso sobe:
 
 | Imagem | Tag | Descrição |
 |--------|-----|-----------|
-| `SEU_USUARIO/permafrost-master` | `latest` | Nó coordenador |
-| `SEU_USUARIO/permafrost-master` | `0.5.1` | Versão específica |
-| `SEU_USUARIO/permafrost-worker` | `latest` | Nó de processamento (inclui `zpaq`) |
-| `SEU_USUARIO/permafrost-worker` | `0.5.1` | Versão específica |
+| `caua-ferreira/permafrost-master` | `latest` | Nó coordenador |
+| `caua-ferreira/permafrost-master` | `0.5.1` | Versão específica |
+| `caua-ferreira/permafrost-worker` | `latest` | Nó de processamento (inclui `zpaq`) |
+| `caua-ferreira/permafrost-worker` | `0.5.1` | Versão específica |
 
 Ambas disponíveis para `linux/amd64` e `linux/arm64` (Apple M1/M2).
 
@@ -228,8 +228,8 @@ ao criar uma tag no GitHub (via `.github/workflows/docker.yml`):
 ```bash
 git tag v0.5.2 && git push --tags
 # → GitHub Actions: build + push para Docker Hub
-# → docker.io/SEU_USUARIO/permafrost-master:0.5.2
-# → docker.io/SEU_USUARIO/permafrost-worker:0.5.2
+# → docker.io/caua-ferreira/permafrost-master:0.5.2
+# → docker.io/caua-ferreira/permafrost-worker:0.5.2
 ```
 
 Configure os secrets no GitHub:

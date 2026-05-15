@@ -7,7 +7,7 @@ Obrigado pelo interesse em contribuir com o Permafrost!
 ## Setup do ambiente
 
 ```bash
-git clone https://github.com/SEU_USUARIO/permafrost-framework
+git clone https://github.com/caua-ferreira/permafrost-framework
 cd permafrost-framework
 pip install -e '.[dev]'
 ```
