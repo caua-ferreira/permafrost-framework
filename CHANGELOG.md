@@ -20,3 +20,12 @@
 - Codecs: Zstd L19, LZMA2 extreme
 - Vault mode: quantização adaptativa (semi-lossy)
 - Bit-rot detection em header e payload
+
+## [0.5.0] — 2026-05
+### Adicionado
+- StorageAdapter: LocalAdapter, S3Adapter, GCSAdapter, AzureAdapter
+- freeze_to(), thaw_from(), audit_remote() — cloud em 1 linha
+- S3 range requests — audit sem download total
+- PermafrostCluster: Master + Worker + Client via FastAPI
+- Scheduling round-robin, retry automático (3×), healthcheck
+- Múltiplos jobs paralelos, cancelamento, progress polling
