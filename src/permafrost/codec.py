@@ -9,7 +9,7 @@ import struct, hashlib, io, json, time, os, lzma, subprocess, tempfile
 import numpy as np, pandas as pd
 import zstandard as zstd
 
-MAGIC = b'PRMS'; EOF_MAGIC = b'SMRP'; VERSION = bytes([1, 2])
+MAGIC = b'PRMS'; EOF_MAGIC = b'SMRP'; VERSION = bytes([1, 3])
 CODEC_ZSTD=0x01; CODEC_LZMA2=0x02; CODEC_ZPAQ=0x03
 QUANT_NONE=0x00; QUANT_HIGH=0x01; QUANT_MEDIUM=0x02; QUANT_LOW=0x03
 FLAG_DELTA=0x01; FLAG_QUANTIZE=0x02; FLAG_CHUNKED=0x04
@@ -63,8 +63,16 @@ def _encode_with_manifest(series, manifest, quant):
     if pred == PRED_TS:
         ts = ((series - pd.Timestamp('1970-01-01')) // pd.Timedelta('1s')).astype(np.int64)
         if quant>=QUANT_MEDIUM: ts=(ts//60)*60
+        if not series.is_monotonic_increasing:
+            import warnings
+            warnings.warn(
+                f"Coluna '{manifest['name']}' de timestamp não está em ordem crescente. "
+                "O preditor ts_delta_s pode restaurar valores incorretos. "
+                "Ordene o DataFrame antes de freeze(): df.sort_values(col)",
+                UserWarning, stacklevel=4
+            )
         deltas=np.diff(ts.values.astype(np.int64),prepend=0)
-        return _zigzag_enc(deltas).astype(np.uint32).tobytes()
+        return _zigzag_enc(deltas).astype(np.uint64).tobytes()
 
     if pred == PRED_DELTA:
         vals=pd.to_numeric(series,errors='coerce').fillna(0).astype(np.int64)
@@ -98,7 +106,7 @@ def _encode_with_manifest(series, manifest, quant):
 def decode_column(data, manifest, n_rows):
     pred=manifest.get('predictor'); scale=manifest.get('scale',1); name=manifest['name']
     if pred==PRED_TS:
-        arr=np.frombuffer(data,dtype=np.uint32).astype(np.uint64)
+        arr=np.frombuffer(data,dtype=np.uint64)
         return pd.Series(pd.to_datetime(np.cumsum(_zigzag_dec(arr)),unit='s'),name=name)
     if pred==PRED_DELTA:
         arr=np.frombuffer(data,dtype=np.uint32).astype(np.uint64)
@@ -532,4 +540,3 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
             'partition_keys':[e['part_key'] for e in index],
             'comment':h['comment']}
 
-print("permafrost_v4.py OK — v1.2 (bug fix: predictor consistente entre chunks)")

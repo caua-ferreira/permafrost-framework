@@ -85,7 +85,7 @@ class TestAudit:
     def test_versao_formato(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path)
-        assert pf.audit(path)["version"] in ("1.0","1.1","1.2")
+        assert pf.audit(path)["version"] in ("1.0","1.1","1.2","1.3")
 
     def test_linhas_corretas(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")

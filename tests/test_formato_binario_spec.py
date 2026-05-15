@@ -74,7 +74,7 @@ class TestMagicEVersao:
         major = raw[4]
         minor = raw[5]
         assert major == 1, f"Major version: {major}"
-        assert minor == 2, f"Minor version: {minor}"
+        assert minor == 3, f"Minor version: {minor}"
 
     def test_version_field_igual_constante(self, spec_file):
         _, _, _, raw = spec_file
