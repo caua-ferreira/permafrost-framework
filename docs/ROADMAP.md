@@ -1,121 +1,169 @@
 # Roadmap — Permafrost Data Framework
 
-## Visão de 3 Anos
-
-O Permafrost segue a mesma estratégia que tornou o Apache Spark sustentável:
-documentação de qualidade, governança transparente, ecossistema de plugins e comunidade ativa.
+> **Versão atual:** 0.6.4 — branch `main`  
+> **Última atualização:** 2026-05-15
 
 ---
 
-## v0.1 — Prototype (✅ Atual)
+## Estado Atual (v0.6.x — done)
 
-**Entregues:**
-- [x] Formato `.permafrost` com magic bytes, SHA-256 duplo, schema Arrow embutido
-- [x] 5 preditores colunares: delta_zigzag, lag1_zigzag, ts_delta_s, category_u8, raw_text
-- [x] Codecs: Zstd L19 + LZMA2 extreme
-- [x] Quant levels: lossless, high, medium
-- [x] `freeze()` + `thaw()` + `audit()` funcionando em Python
-- [x] Bit-rot detection antes de qualquer decompressão
-- [x] Benchmarks completos: 80k linhas × 18 colunas, projeção 10 GB
-- [x] Estudo completo de algoritmos (Zstd, LZMA2, Brotli, ZPAQ, Parquet)
+Tudo abaixo está implementado, testado e publicado no PyPI.
 
----
-
-## v0.2 — Sparse Index
-
-**Meta:** thaw parcial sem descomprimir o arquivo inteiro
-
-- [ ] Índice esparso no final do arquivo (inspirado no Parquet footer)
-- [ ] Estrutura: `[n_entries:u32][partition_key][row_start:u64][byte_offset:u64]...`
-- [ ] `thaw(path, filter={'ano': 2022, 'regiao': 'Sul'})` — lê só os chunks necessários
-- [ ] `footer_offset` nos últimos 8 bytes — leitura de trás para frente
-- [ ] Testes: verificar que thaw de 1% dos dados não descomprime mais de 5% do arquivo
-
----
-
-## v0.3 — Chunk Mode + Catalog
-
-**Meta:** suporte a datasets grandes e catálogo de busca
-
-- [ ] Divisão automática em chunks de 256 MB (configurável)
-- [ ] Cada chunk é um `.permafrost` independente com seu próprio SHA-256
-- [ ] PDS Manifest: arquivo JSON listando todos os chunks de um dataset
-- [ ] PermafrostCatalog (DuckDB local):
-  - Indexa todos os `.permafrost` por localização, schema, período, custo
-  - API: `catalog.search(schema_contains='preco', period_start='2020-01-01')`
-  - Estimativa de custo de storage por dataset
+| Componente | Status | Detalhe |
+|---|---|---|
+| Formato `.permafrost` | ✅ | Magic bytes, SHA-256 por chunk, schema Arrow embutido, footer sparse index |
+| Preditores colunares | ✅ | delta_zigzag, lag1_zigzag, ts_delta_s, category_u8, raw_text |
+| Codecs | ✅ | Zstd L19, LZMA2 extreme, ZPAQ basic |
+| Quant levels | ✅ | NONE, HIGH, MEDIUM, LOW |
+| `freeze()` / `thaw()` / `audit()` | ✅ | API pública estável |
+| Bit-rot detection | ✅ | SHA-256 verificado antes de qualquer decompress |
+| Sparse index + partial thaw | ✅ | `thaw(path, filter={col: val})` lê só chunks relevantes |
+| Chunk mode (streaming) | ✅ | `freeze_file()`, `freeze_stream()`, `thaw_iter()` |
+| PermafrostCatalog (DuckDB) | ✅ | Thread-safe, search por tags/período/schema |
+| StorageAdapters | ✅ | S3, GCS, Azure, Local — `freeze_to()` / `thaw_from()` |
+| Cluster (FastAPI) | ✅ | PermafrostMaster + PermafrostWorker + PermafrostClient |
+| Spark DataSource API v2 | ✅ | Plugin opcional (requer pyspark) |
+| CLI (`permafrost freeze/thaw/audit`) | ✅ | Typer + Rich |
+| Suite de testes | ✅ | 385 passed, 5 skipped — CI GitHub 3.10/3.11/3.12 |
+| Notebooks de exemplo | ✅ | 7 notebooks com outputs reais no repositório |
+| Dockerfiles | ✅ | Dockerfile.master + Dockerfile.worker |
+| PyPI | ✅ | `pip install permafrost-framework` |
+| Docker Hub | ✅ | CI publica em tags v* (secrets configurados) |
 
 ---
 
-## v0.4 — Cluster Básico
+## Crítico — v0.7 (próximo sprint)
 
-**Meta:** pipeline distribuído rodando em múltiplos workers
+Features que bloqueiam adoção em produção. **Começar por aqui.**
 
-- [ ] PermafrostMaster: REST API (FastAPI), recebe jobs, faz scheduling
-- [ ] PermafrostWorker: executa pipeline L0→L4 em paralelo por chunk
-- [ ] Job checkpointing: retoma de onde parou em caso de falha
-- [ ] Docker Compose: cluster local com 1 master + 3 workers
-- [ ] Métricas básicas: throughput, ratio médio, erros
+### C1 — Encryption at Rest (AES-256-GCM)
+
+**Por que é crítico:** qualquer empresa em cold storage precisa de dados cifrados. Sem isso o framework não passa em avaliações de segurança.
+
+- [ ] Chave por arquivo: `freeze(df, path, key=b"32-bytes...")` ou via env `PERMAFROST_KEY`
+- [ ] Cifra por chunk, não por arquivo inteiro (permite partial thaw cifrado)
+- [ ] KMS adapter interface: `LocalKeyProvider`, `AWSKMSProvider`, `GCPKMSProvider`
+- [ ] `audit()` mostra se arquivo é cifrado + qual KMS foi usado
+- [ ] Formato: nonce (12 bytes) + tag (16 bytes) por chunk, antes do payload comprimido
+- [ ] Testes: round-trip cifrado, tamper detection (SHA-256 + GCM tag), KMS mock
+
+### C2 — Preditor `float32_quantized` (lossy, alta performance)
+
+**Por que é crítico:** sensores, embeddings ML, séries temporais financeiras — maior ganho de compressão com perda controlada.
+
+- [ ] Quantiza float64 → float32 (ou int16 com scale factor)
+- [ ] Parâmetro `precision_bits` (16, 32) por coluna ou global
+- [ ] Erro máximo garantido: documentado no `audit()` por coluna
+- [ ] Integração com `QUANT_HIGH` / `QUANT_MEDIUM` já existentes
+- [ ] Benchmark: comparar com Parquet ZSTD em dataset de embeddings 1536-dim
+
+### C3 — Schema Evolution (thaw com schema mais novo que o arquivo)
+
+**Por que é crítico:** dados congelados em 2024 precisam ser lidos em 2030 com schema diferente.
+
+- [ ] `thaw()` aceita `schema_override: pa.Schema` para cast automático
+- [ ] Regras: colunas novas → null, colunas removidas → ignoradas, tipo compatível → cast
+- [ ] `audit()` mostra diff entre schema gravado e schema atual do catalog
+- [ ] Testes: arquivo v0.6 lido por código v1.0 com schema evoluído
+
+### C4 — Retry + Resumable Upload no StorageAdapter
+
+**Por que é crítico:** uploads de arquivos grandes para S3/GCS falham em links instáveis. Hoje um erro no meio força reiniciar do zero.
+
+- [ ] Interface: `upload_resumable(local_path, remote_uri, chunk_size=100MB)`
+- [ ] State file local (`.permafrost.upload_state`) para retomar
+- [ ] Retry com exponential backoff (3 tentativas, max 60s)
+- [ ] Suporte: S3 multipart upload, GCS resumable upload, Azure block blob
 
 ---
 
-## v0.5 — StorageAdapters
+## Importante — v0.8
 
-**Meta:** escrever e ler de cloud storage
+Qualidade de vida e ecossistema. Fazer depois do v0.7.
 
-- [ ] StorageAdapter interface: `upload(local_path, remote_uri)`, `download(remote_uri, local_path)`
-- [ ] S3Adapter: upload multipart, presigned URLs
-- [ ] GCSAdapter: Google Cloud Storage
-- [ ] AzureAdapter: Azure Blob Storage
-- [ ] HDFSAdapter: para ambientes on-premise
+### I1 — Helm Chart + Kubernetes Operator
+
+- [ ] `charts/permafrost/` com values.yaml configurável (replicas, resources, storage class)
+- [ ] CRD `PermafrostJob` — descreve um job de freeze como recurso Kubernetes
+- [ ] Operator reconcilia estado: cria workers, monitora, limpa após conclusão
+- [ ] Guia: deploy em GKE/EKS/AKS em menos de 10 minutos
+
+### I2 — Codec Auto-Selector (ML leve)
+
+- [ ] Analisa amostra de 1000 linhas do DataFrame e escolhe codec + nível ótimo
+- [ ] Modelo: decision tree treinada em benchmarks internos (sem dependência externa)
+- [ ] API: `freeze(df, path, codec="auto")` — padrão futuro
+- [ ] Benchmark: auto-selector bate seleção manual em >80% dos datasets de teste
+
+### I3 — CLI Binary Standalone (zero-deps)
+
+- [ ] Compilar com PyInstaller ou Nuitka: binário único `permafrost.exe` / `permafrost`
+- [ ] Funciona sem Python instalado — garantia de leitura em 2040
+- [ ] Publish: GitHub Releases + instalar via `curl | sh`
+- [ ] Tamanho alvo: < 15 MB
+
+### I4 — RBAC Básico no Cluster
+
+- [ ] JWT simples: token com claims `can_freeze`, `can_thaw`, `namespace`
+- [ ] Master valida token em todos os endpoints
+- [ ] `permafrost cluster add-user <name> --can-freeze --namespace prod`
+- [ ] Sem dependências externas (sem Keycloak, sem LDAP na v0.8)
+
+### I5 — Preditor `json_schema_v2` (NoSQL melhorado)
+
+- [ ] Detecta campos repetidos em JSONL e cria colunas virtuais
+- [ ] Compressão de chaves JSON por dicionário compartilhado por chunk
+- [ ] Benchmark em dumps MongoDB reais (target: 12× vs gzip puro)
 
 ---
 
-## v1.0 — Production Ready
+## Futuro — v1.0+ (quando I-series estiver done)
 
-**Meta:** pronto para uso em produção em empresas
+### v1.0 — Production Ready
 
-- [ ] Kubernetes Operator + Helm Chart v1.0
-- [ ] Apache Spark DataSource API v2 plugin
-- [ ] ZPAQ codec (method=5) para Vault tier
-- [ ] RBAC básico: quem pode freeze, quem pode thaw
-- [ ] Documentação completa (Getting Started em 15 minutos)
-- [ ] Spec formal do formato `.permafrost` publicada como RFC draft
-- [ ] CLI standalone (binary zero-deps) — leitor de `.permafrost` para 2040
+- [ ] Spec formal `.permafrost` publicada como RFC draft no GitHub
+- [ ] Certificação de compatibilidade para storage vendors
+- [ ] `PermafrostContext` — API de alto nível unificando catalog + storage + cluster
+- [ ] Documentação completa (MkDocs Material, Getting Started em 15 min)
+- [ ] Python SDK estável com semantic versioning + deprecation policy
 
----
+### v2.0 — Intelligence
 
-## v2.0 — Intelligence
-
-**Meta:** auto-seleção de codec e otimizações avançadas
-
-- [ ] Codec auto-selector: analisa amostra do dado e escolhe codec + nível ótimos via ML
-- [ ] Cross-dataset solid compression com dicionário global treinado no corpus
-- [ ] Compression-aware query pushdown
+- [ ] Cross-dataset solid compression (dicionário global treinado no corpus)
+- [ ] Compression-aware query pushdown (pushdown de filtros até o codec)
 - [ ] Permafrost Hub: registry de plugins (codecs, adapters, predictors)
+- [ ] Suporte a streaming em tempo real (Kafka → freeze incremental)
 
----
+### v3.0 — Universal Archive
 
-## v3.0 — Universal Archive
-
-**Meta:** interoperabilidade universal
-
-- [ ] Format bridge: importar dados de tar, ZIP, WARC, ORC
-- [ ] API de busca full-text dentro de dados congelados (sem thaw completo)
-- [ ] Edge compression nodes: nós leves para freeze próximo à fonte de dados
-- [ ] Certification Program: vendors de storage podem obter certificação de compatibilidade
+- [ ] Format bridge: importar tar, ZIP, WARC, ORC, Avro
+- [ ] Full-text search dentro de dados congelados (sem thaw completo)
+- [ ] Edge compression nodes: freeze próximo à fonte (IoT, edge computing)
+- [ ] SDK para outras linguagens: Rust (core), Go (CLI), Java (Spark nativo)
 
 ---
 
 ## Analogia com Apache Spark
 
-| Spark | Permafrost |
-|---|---|
-| SparkContext | PermafrostContext |
-| RDD / DataFrame | Permafrost Dataset (.permafrost) |
-| Spark Master | PermafrostMaster |
-| Spark Executor | PermafrostWorker |
-| Catalyst Optimizer | Codec Auto-Selector (v2.0) |
-| Spark SQL | Thaw Query API + filtros |
-| DataSource API v2 | StorageAdapter Plugin API |
-| spark-submit | `permafrost freeze / thaw` CLI |
+| Spark | Permafrost | Status |
+|---|---|---|
+| SparkContext | PermafrostContext | v1.0 |
+| RDD / DataFrame | `.permafrost` Dataset | ✅ |
+| Spark Master | PermafrostMaster | ✅ |
+| Spark Executor | PermafrostWorker | ✅ |
+| Catalyst Optimizer | Codec Auto-Selector | v0.8 |
+| Spark SQL | Thaw Query + filtros | ✅ parcial |
+| DataSource API v2 | StorageAdapter Plugin API | ✅ |
+| spark-submit | `permafrost freeze/thaw` CLI | ✅ |
+| Spark Security | Encryption + RBAC | v0.7 / v0.8 |
+| Kubernetes Operator | Helm Chart + CRD | v0.8 |
+
+---
+
+## Decisões de design fixas (não mudar)
+
+- **Formato self-contained:** cada `.permafrost` deve ser legível sem catálogo externo
+- **Bit-rot first:** SHA-256 verificado ANTES de qualquer I/O de decompress
+- **Chunk independência:** cada chunk é um arquivo válido — falha em um não quebra os outros
+- **Zero lock-in de cloud:** StorageAdapter é interface — trocar S3 por GCS não muda código do usuário
+- **Leitura em 2040:** CLI binary standalone é requisito de v1.0, não opcional

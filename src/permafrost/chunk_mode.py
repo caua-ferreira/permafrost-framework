@@ -8,9 +8,10 @@ from permafrost.codec import (
     _sha256, _pa_schema,
     MAGIC, EOF_MAGIC, VERSION,
     CODEC_LZMA2, CODEC_ZSTD, CODEC_ZPAQ, QUANT_NONE, QUANT_MEDIUM,
-    FLAG_DELTA, FLAG_QUANTIZE, FLAG_CHUNKED, FLAG_PREDICTOR, FLAG_INDEX,
+    FLAG_DELTA, FLAG_QUANTIZE, FLAG_CHUNKED, FLAG_PREDICTOR, FLAG_INDEX, FLAG_ENCRYPTED,
     decode_column,
 )
+from permafrost.crypto import resolve_key, encrypt_chunk, decrypt_chunk
 import struct, json, time, os
 from typing import Callable, Generator, Iterator, Optional
 import numpy as np, pandas as pd
@@ -27,6 +28,7 @@ def freeze_stream(
     comment: str = "",
     retention_days: int = 0,
     progress_cb: Optional[Callable[[int, int, float], None]] = None,
+    key=None,
 ) -> dict:
     """Comprime um iterador de DataFrames em um único arquivo ``.permafrost``.
 
@@ -57,8 +59,12 @@ def freeze_stream(
         ``freeze_s``, ``codec``, ``partition_by``, ``index_entries`` e
         ``mode`` (``"streaming"``).
     """
+    raw_key, kms_name, kid = resolve_key(key)
+
     t0 = time.time()
     flags = FLAG_PREDICTOR | FLAG_DELTA | FLAG_CHUNKED | FLAG_INDEX | (FLAG_QUANTIZE if quant else 0)
+    if raw_key is not None:
+        flags |= FLAG_ENCRYPTED
     manifests: dict = {}
     index_entries: list = []
     orig_rows = 0
@@ -88,6 +94,8 @@ def freeze_stream(
             chunk_end   = orig_rows + len(block_df) - 1
             raw_chunk   = _encode_chunk(block_df.reset_index(drop=True), manifests, quant)
             compressed  = _compress(raw_chunk, codec)
+            if raw_key is not None:
+                compressed = encrypt_chunk(compressed, raw_key)
             sha         = _sha256(compressed)
 
             if partition_by and partition_by in block_df.columns:
@@ -122,6 +130,11 @@ def freeze_stream(
     manifest_b = json.dumps(manifests, ensure_ascii=False, default=str).encode()
     comment_b  = comment.encode()[:255]
 
+    enc_meta = b''
+    if raw_key is not None:
+        enc_meta = (struct.pack('>B', len(kms_name)) + kms_name.encode() +
+                    struct.pack('>B', len(kid)) + kid.encode())
+
     hdr = b''.join([
         MAGIC, VERSION,
         struct.pack('>H', flags),
@@ -134,7 +147,7 @@ def freeze_stream(
         struct.pack('>q', int(time.time())),
         struct.pack('>I', retention_days),
         struct.pack('>Q', orig_rows), struct.pack('>Q', orig_rows),
-        struct.pack('>Q', orig_bytes_est),
+        struct.pack('>Q', orig_bytes_est), enc_meta,
     ])
     hdr_sha = _sha256(hdr)
     payload_start = len(hdr) + 32
@@ -190,6 +203,7 @@ def freeze_file(
     partition_by: Optional[str] = None,
     comment: str = "",
     progress_cb: Optional[Callable[[int, int, float], None]] = None,
+    key=None,
 ) -> dict:
     """Comprime um arquivo grande (CSV ou JSONL) sem carregar tudo na RAM.
 
@@ -226,7 +240,7 @@ def freeze_file(
                 yield chunk
         return freeze_stream(it(), output_path, schema_sample=schema_sample,
                              codec=codec, quant=quant, partition_by=partition_by,
-                             comment=comment, progress_cb=progress_cb)
+                             comment=comment, progress_cb=progress_cb, key=key)
 
     elif ext in ('.jsonl', '.ndjson'):
         from permafrost.schema_detector import SchemaDetector
@@ -250,7 +264,7 @@ def freeze_file(
                 yield df_b
         return freeze_stream(it(), output_path, schema_sample=schema_df,
                              codec=codec, quant=quant, partition_by=partition_by,
-                             comment=comment, progress_cb=progress_cb)
+                             comment=comment, progress_cb=progress_cb, key=key)
     else:
         raise ValueError(f"Formato não suportado: {ext}")
 
@@ -260,6 +274,7 @@ def thaw_iter(
     verify: bool = True,
     filter: Optional[dict] = None,
     batch_size: Optional[int] = None,
+    key=None,
 ) -> Generator[pd.DataFrame, None, None]:
     """Itera sobre chunks de um ``.permafrost`` sem carregar tudo na memória.
 
@@ -291,6 +306,16 @@ def thaw_iter(
             raise ValueError("Header SHA-256 inválido")
     codec     = h['codec']
     manifests = h['manifests']
+
+    iter_key = None
+    if h['encrypted']:
+        iter_key, _, _ = resolve_key(key)
+        if iter_key is None:
+            raise ValueError(
+                "This .permafrost file is encrypted. "
+                "Provide key= or set PERMAFROST_KEY env var."
+            )
+
     index     = _read_sparse_index(raw)
     selected  = index
     if filter:
@@ -309,6 +334,8 @@ def thaw_iter(
         sha     = raw[offset + blk_len: offset + blk_len + 32]
         if verify and _sha256(blob).hex() != entry['sha256']:
             raise ValueError(f"Chunk {entry['chunk_id']} corrompido")
+        if iter_key is not None:
+            blob = decrypt_chunk(blob, iter_key)
         chunk_raw = _decompress(blob, codec)
         n_rows    = entry['row_end'] - entry['row_start'] + 1
         df_c      = _parse_chunk(chunk_raw, manifests, n_rows)

@@ -13,7 +13,7 @@ MAGIC = b'PRMS'; EOF_MAGIC = b'SMRP'; VERSION = bytes([1, 3])
 CODEC_ZSTD=0x01; CODEC_LZMA2=0x02; CODEC_ZPAQ=0x03
 QUANT_NONE=0x00; QUANT_HIGH=0x01; QUANT_MEDIUM=0x02; QUANT_LOW=0x03
 FLAG_DELTA=0x01; FLAG_QUANTIZE=0x02; FLAG_CHUNKED=0x04
-FLAG_PREDICTOR=0x08; FLAG_INDEX=0x10
+FLAG_PREDICTOR=0x08; FLAG_INDEX=0x10; FLAG_ENCRYPTED=0x20
 DEFAULT_CHUNK_ROWS = 10_000
 
 PRED_DELTA='delta_zigzag'; PRED_LAG1='lag1_zigzag'
@@ -270,6 +270,7 @@ def freeze(
     partition_by: Optional[str] = None,
     comment: str = "",
     retention_days: int = 0,
+    key=None,
 ) -> dict[str, Any]:
     """Comprime um DataFrame para o formato .permafrost.
 
@@ -324,8 +325,13 @@ def freeze(
         >>> print(f"Ratio: {m['ratio']:.2f}x")
         Ratio: 8.37x
     """
+    from permafrost.crypto import resolve_key, encrypt_chunk
+    raw_key, kms_name, kid = resolve_key(key)
+
     t0=time.time(); orig_bytes=len(df.to_csv(index=False).encode()); orig_rows=len(df)
     flags=FLAG_PREDICTOR|FLAG_DELTA|FLAG_CHUNKED|FLAG_INDEX|(FLAG_QUANTIZE if quant else 0)
+    if raw_key is not None:
+        flags |= FLAG_ENCRYPTED
 
     # ── BUG FIX: detectar manifestos UMA VEZ sobre o DataFrame COMPLETO ──────
     manifests={}
@@ -342,7 +348,10 @@ def freeze(
         chunk_end=min(chunk_start+chunk_rows,orig_rows)
         df_chunk=df.iloc[chunk_start:chunk_end].reset_index(drop=True)
         raw_chunk=_encode_chunk(df_chunk,manifests,quant)
-        compressed=_compress(raw_chunk,codec); sha=_sha256(compressed)
+        compressed=_compress(raw_chunk,codec)
+        if raw_key is not None:
+            compressed = encrypt_chunk(compressed, raw_key)
+        sha=_sha256(compressed)
 
         if partition_by and partition_by in df_chunk.columns:
             pv=sorted(df_chunk[partition_by].unique().tolist())
@@ -360,6 +369,11 @@ def freeze(
     manifest_b=json.dumps(manifests,ensure_ascii=False,default=str).encode()
     comment_b=comment.encode()[:255]
 
+    enc_meta = b''
+    if raw_key is not None:
+        enc_meta = (struct.pack('>B', len(kms_name)) + kms_name.encode() +
+                    struct.pack('>B', len(kid)) + kid.encode())
+
     hdr=b''.join([MAGIC,VERSION,struct.pack('>H',flags),struct.pack('>B',codec),
         struct.pack('>B',quant),struct.pack('>H',len(chunk_blobs)),
         struct.pack('>I',chunk_rows),struct.pack('>I',len(schema_b)),schema_b,
@@ -367,7 +381,7 @@ def freeze(
         struct.pack('>B',len(comment_b)),comment_b,
         struct.pack('>q',int(time.time())),struct.pack('>I',retention_days),
         struct.pack('>Q',orig_rows),struct.pack('>Q',orig_rows),
-        struct.pack('>Q',orig_bytes),])
+        struct.pack('>Q',orig_bytes), enc_meta,])
     hdr_sha=_sha256(hdr); hdr_size=len(hdr)+32
 
     cursor=hdr_size
@@ -409,11 +423,16 @@ def _read_header(raw):
     cl=struct.unpack('>B',rd(1))[0]; comment=rd(cl).decode()
     freeze_ts=struct.unpack('>q',rd(8))[0]; rd(4)
     orig_rows=struct.unpack('>Q',rd(8))[0]; stored_rows=struct.unpack('>Q',rd(8))[0]; rd(8)
+    enc_kms=''; key_id=''
+    if flags & FLAG_ENCRYPTED:
+        kl=struct.unpack('>B',rd(1))[0]; enc_kms=rd(kl).decode()
+        kil=struct.unpack('>B',rd(1))[0]; key_id=rd(kil).decode()
     hdr_end=p; hdr_sha=rd(32)
     return {'flags':flags,'codec':codec,'quant':quant,'n_chunks':n_chunks,
             'chunk_rows':chunk_rows,'manifests':manifests,'comment':comment,
             'freeze_ts':freeze_ts,'orig_rows':orig_rows,'stored_rows':stored_rows,
-            'hdr_end':hdr_end,'hdr_sha_stored':hdr_sha,'payload_start':p}
+            'hdr_end':hdr_end,'hdr_sha_stored':hdr_sha,'payload_start':p,
+            'encrypted':bool(flags & FLAG_ENCRYPTED),'enc_kms':enc_kms,'key_id':key_id}
 
 def _read_sparse_index(raw):
     if raw[-4:]!=EOF_MAGIC: raise ValueError("EOF magic ausente")
@@ -429,6 +448,7 @@ def thaw(
     verify: bool = True,
     filter: Optional[dict] = None,
     row_range: Optional[tuple] = None,
+    key=None,
 ) -> pd.DataFrame:
     """Descomprime um arquivo .permafrost de volta para DataFrame.
 
@@ -454,6 +474,7 @@ def thaw(
         >>> df_2023 = pf.thaw("vendas.permafrost", filter={"ano": 2023})
         >>> df_sample = pf.thaw("vendas.permafrost", row_range=(0, 9_999))
     """
+    from permafrost.crypto import resolve_key, decrypt_chunk
     with open(path,'rb') as f: raw=f.read()
     if raw[-4:]!=EOF_MAGIC: raise ValueError("EOF magic ausente")
     h=_read_header(raw)
@@ -461,6 +482,16 @@ def thaw(
         if _sha256(raw[:h['hdr_end']])!=h['hdr_sha_stored']:
             raise ValueError("Header SHA-256 inválido")
     codec=h['codec']; manifests=h['manifests']; orig_rows=h['orig_rows']
+
+    raw_key = None
+    if h['encrypted']:
+        raw_key, _, _ = resolve_key(key)
+        if raw_key is None:
+            raise ValueError(
+                "This .permafrost file is encrypted. "
+                "Provide key= or set PERMAFROST_KEY env var."
+            )
+
     index_entries=_read_sparse_index(raw)
 
     selected=index_entries
@@ -480,6 +511,8 @@ def thaw(
         blob=raw[offset:offset+blk_len]; sha=raw[offset+blk_len:offset+blk_len+32]
         if verify and _sha256(blob).hex()!=entry['sha256']:
             raise ValueError(f"Chunk {entry['chunk_id']} corrompido")
+        if raw_key is not None:
+            blob = decrypt_chunk(blob, raw_key)
         chunk_raw=_decompress(blob,codec)
         n_rows_chunk=entry['row_end']-entry['row_start']+1
         dfs.append(_parse_chunk(chunk_raw,manifests,n_rows_chunk))
@@ -538,5 +571,6 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
             'columns':list(h['manifests'].keys()),'index_entries':index,
             'partition_col':index[0]['part_col'] if index else None,
             'partition_keys':[e['part_key'] for e in index],
-            'comment':h['comment']}
+            'comment':h['comment'],
+            'encrypted':h['encrypted'],'kms':h['enc_kms'],'key_id':h['key_id']}
 

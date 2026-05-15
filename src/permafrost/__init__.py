@@ -64,6 +64,9 @@ from permafrost.chunk_mode import (
     thaw_iter,
 )
 
+# ── Encryption ────────────────────────────────────────────────────────────────
+from permafrost.crypto import KeyProvider, LocalKeyProvider
+
 # ── Catalog (DuckDB index) ────────────────────────────────────────────────────
 from permafrost.catalog import PermafrostCatalog
 
@@ -105,6 +108,8 @@ __all__ = [
     "storage_from_uri", "parse_uri", "freeze_to", "thaw_from", "audit_remote",
     # Cluster
     "PermafrostMaster", "PermafrostWorker", "PermafrostClient",
+    # Encryption
+    "KeyProvider", "LocalKeyProvider",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
 try:

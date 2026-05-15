@@ -24,6 +24,7 @@ dependencies = [
     "zstandard>=0.21.0", "duckdb>=0.9.0",
     "typer>=0.9.0", "rich>=13.0.0",
     "fastapi>=0.100.0", "uvicorn>=0.23.0", "httpx>=0.24.0",
+    "cryptography>=41.0.0",
 ]
 
 [project.optional-dependencies]
