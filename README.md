@@ -3,7 +3,7 @@
 <div align="center">
 
 [![PyPI version](https://badge.fury.io/py/permafrost-framework.svg)](https://pypi.org/project/permafrost-framework/)
-[![Tests](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml/badge.svg)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/caua-ferreira/permafrost-framework/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://pypi.org/project/permafrost-framework/)
 [![Docs](https://img.shields.io/badge/docs-mkdocs-00D4FF)](https://caua-ferreira.github.io/permafrost-framework)
@@ -315,7 +315,7 @@ test_cli_cobertura.py            todos os comandos CLI
 test_performance_regression.py   ratio ≥8×, thaw <2s, audit <50ms
 ```
 
-Status atual dos testes: [![Tests](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml/badge.svg)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
+Status atual dos testes: [![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
 
 ---
 
