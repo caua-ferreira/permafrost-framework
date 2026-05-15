@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 import pandas as pd, numpy as np
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
@@ -139,35 +139,57 @@ class PermafrostMaster:
     HEARTBEAT_S   = 10
     DEFAULT_CHUNK = 50_000
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8700) -> None:
+    def __init__(self, host: str = "0.0.0.0", port: int = 8700,
+                 secret_key: Optional[str] = None) -> None:
         self.host = host
         self.port = port
         self.jobs:    Dict[str, Job]        = {}
         self.workers: Dict[str, WorkerInfo] = {}
         self._task_queue: queue.Queue       = queue.Queue()
         self._lock = threading.RLock()
+        self._rbac = None
+        if secret_key:
+            from permafrost.rbac import RBACManager
+            self._rbac = RBACManager(secret_key)
         self.app = self._build_app()
 
     def _build_app(self) -> FastAPI:
         """Constrói e configura a aplicação FastAPI com todas as rotas REST.
 
         Returns:
-            Instância ``FastAPI`` com rotas de health, workers, jobs e tasks.
+            Instância ``FastAPI`` com rotas de health, workers, jobs, tasks e admin.
         """
         app = FastAPI(title="PermafrostMaster", version="1.0")
 
-        # ── Health ────────────────────────────────────────────────────────────
+        # ── Auth helper (noop quando RBAC desabilitado) ───────────────────────
+        def _auth(token: Optional[str],
+                  require_freeze: bool = False,
+                  require_thaw:   bool = False) -> None:
+            if self._rbac is None:
+                return
+            if not token:
+                raise HTTPException(401, "Authorization header obrigatório")
+            try:
+                self._rbac.validate(token,
+                                    require_freeze=require_freeze,
+                                    require_thaw=require_thaw)
+            except Exception as exc:
+                raise HTTPException(403, str(exc))
+
+        # ── Health (público) ──────────────────────────────────────────────────
         @app.get("/health")
         def health() -> dict:
             with self._lock:
                 return {
-                    "status": "ok",
-                    "jobs":    len(self.jobs),
-                    "workers": len(self.workers),
-                    "idle_workers": sum(1 for w in self.workers.values() if w.status == "idle"),
+                    "status":       "ok",
+                    "rbac_enabled": self._rbac is not None,
+                    "jobs":         len(self.jobs),
+                    "workers":      len(self.workers),
+                    "idle_workers": sum(1 for w in self.workers.values()
+                                        if w.status == "idle"),
                 }
 
-        # ── Worker registration ───────────────────────────────────────────────
+        # ── Worker registration (interno — sem auth) ──────────────────────────
         @app.post("/workers/register")
         def register_worker(data: dict) -> dict:
             worker_id = data['worker_id']
@@ -190,7 +212,9 @@ class PermafrostMaster:
 
         # ── Job submission ────────────────────────────────────────────────────
         @app.post("/jobs")
-        def submit_job(data: dict, background_tasks: BackgroundTasks) -> dict:
+        def submit_job(data: dict, background_tasks: BackgroundTasks,
+                       authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_freeze=True)
             job_id = str(uuid.uuid4())[:8]
             config = {
                 'codec':        data.get('codec', 'lzma2'),
@@ -201,7 +225,8 @@ class PermafrostMaster:
             job = Job(
                 job_id=job_id,
                 source_path=data['source_path'],
-                output_path=data.get('output_path', data['source_path'].replace('.csv', '.permafrost')),
+                output_path=data.get('output_path',
+                                     data['source_path'].replace('.csv', '.permafrost')),
                 config=config,
             )
             with self._lock:
@@ -212,25 +237,30 @@ class PermafrostMaster:
 
         # ── Job status ────────────────────────────────────────────────────────
         @app.get("/jobs/{job_id}")
-        def get_job(job_id: str) -> dict:
+        def get_job(job_id: str,
+                    authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_thaw=True)
             with self._lock:
                 if job_id not in self.jobs:
                     raise HTTPException(404, f"Job {job_id} não encontrado")
                 return self.jobs[job_id].to_dict()
 
         @app.get("/jobs")
-        def list_jobs() -> list:
+        def list_jobs(authorization: Optional[str] = Header(None)) -> list:
+            _auth(authorization, require_thaw=True)
             with self._lock:
                 return [j.to_dict() for j in self.jobs.values()]
 
         @app.delete("/jobs/{job_id}")
-        def cancel_job(job_id: str) -> dict:
+        def cancel_job(job_id: str,
+                       authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_freeze=True)
             with self._lock:
                 if job_id in self.jobs:
                     self.jobs[job_id].status = JobStatus.CANCELLED
             return {"cancelled": job_id}
 
-        # ── Task result (callback do worker) ──────────────────────────────────
+        # ── Task result (callbacks do worker — sem auth) ───────────────────────
         @app.post("/jobs/{job_id}/tasks/{task_id}/done")
         def task_done(job_id: str, task_id: str, data: dict) -> dict:
             with self._lock:
@@ -279,9 +309,46 @@ class PermafrostMaster:
 
         # ── Workers status ────────────────────────────────────────────────────
         @app.get("/workers")
-        def list_workers() -> list:
+        def list_workers(authorization: Optional[str] = Header(None)) -> list:
+            _auth(authorization, require_thaw=True)
             with self._lock:
                 return [w.to_dict() for w in self.workers.values()]
+
+        # ── Admin: gestão de usuários (requer X-Admin-Key) ────────────────────
+        @app.post("/admin/users")
+        def create_user(data: dict,
+                        x_admin_key: Optional[str] = Header(None)) -> dict:
+            if self._rbac is None:
+                raise HTTPException(400, "RBAC não habilitado neste cluster")
+            if not self._rbac.verify_admin_key(x_admin_key or ""):
+                raise HTTPException(403, "X-Admin-Key inválida")
+            token = self._rbac.add_user(
+                username=data["username"],
+                can_freeze=data.get("can_freeze", False),
+                can_thaw=data.get("can_thaw", False),
+                namespace=data.get("namespace", "default"),
+                expires_in=data.get("expires_in", 0),
+            )
+            print(f"  [Master] Usuário criado: {data['username']}")
+            return {"username": data["username"], "token": token}
+
+        @app.get("/admin/users")
+        def list_users(x_admin_key: Optional[str] = Header(None)) -> list:
+            if self._rbac is None:
+                raise HTTPException(400, "RBAC não habilitado neste cluster")
+            if not self._rbac.verify_admin_key(x_admin_key or ""):
+                raise HTTPException(403, "X-Admin-Key inválida")
+            return self._rbac.list_users()
+
+        @app.delete("/admin/users/{username}")
+        def delete_user(username: str,
+                        x_admin_key: Optional[str] = Header(None)) -> dict:
+            if self._rbac is None:
+                raise HTTPException(400, "RBAC não habilitado neste cluster")
+            if not self._rbac.verify_admin_key(x_admin_key or ""):
+                raise HTTPException(403, "X-Admin-Key inválida")
+            removed = self._rbac.remove_user(username)
+            return {"removed": username, "existed": removed}
 
         return app
 
@@ -663,9 +730,11 @@ class PermafrostClient:
         status = client.wait(job_id)
     """
 
-    def __init__(self, master_url: str = "http://localhost:8700") -> None:
+    def __init__(self, master_url: str = "http://localhost:8700",
+                 token: Optional[str] = None) -> None:
         self.master_url = master_url.rstrip('/')
-        self._client    = httpx.Client(timeout=30)
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self._client = httpx.Client(timeout=30, headers=headers)
 
     def health(self) -> dict:
         """Retorna o status de saúde do Master.
@@ -771,6 +840,67 @@ class PermafrostClient:
             Dicionário de confirmação com ``cancelled``.
         """
         return self._client.delete(f"{self.master_url}/jobs/{job_id}").json()
+
+    def add_user(self, username: str, can_freeze: bool = False,
+                 can_thaw: bool = False, namespace: str = "default",
+                 expires_in: int = 0, admin_key: str = "") -> str:
+        """Cria um usuário no cluster e retorna seu token JWT.
+
+        Requer que o Master tenha RBAC habilitado e que ``admin_key`` seja a
+        chave-mestra do cluster.
+
+        Args:
+            username: Nome único do usuário.
+            can_freeze: Permite submeter jobs de freeze.
+            can_thaw: Permite leitura/thaw.
+            namespace: Namespace do usuário (ex.: ``"prod"``).
+            expires_in: Segundos até o token expirar (0 = nunca).
+            admin_key: Chave-mestra do cluster (``secret_key`` do Master).
+
+        Returns:
+            Token JWT do novo usuário.
+
+        Raises:
+            httpx.HTTPStatusError: Se o admin_key for inválido ou RBAC não estiver habilitado.
+        """
+        resp = self._client.post(
+            f"{self.master_url}/admin/users",
+            json={"username": username, "can_freeze": can_freeze,
+                  "can_thaw": can_thaw, "namespace": namespace,
+                  "expires_in": expires_in},
+            headers={"X-Admin-Key": admin_key},
+        )
+        resp.raise_for_status()
+        return resp.json()["token"]
+
+    def list_users(self, admin_key: str = "") -> list:
+        """Lista usuários registrados no cluster.
+
+        Args:
+            admin_key: Chave-mestra do cluster.
+
+        Returns:
+            Lista de dicionários com dados dos usuários.
+        """
+        resp = self._client.get(f"{self.master_url}/admin/users",
+                                headers={"X-Admin-Key": admin_key})
+        resp.raise_for_status()
+        return resp.json()
+
+    def remove_user(self, username: str, admin_key: str = "") -> dict:
+        """Remove um usuário do cluster.
+
+        Args:
+            username: Nome do usuário a remover.
+            admin_key: Chave-mestra do cluster.
+
+        Returns:
+            Dicionário com ``removed`` e ``existed``.
+        """
+        resp = self._client.delete(f"{self.master_url}/admin/users/{username}",
+                                   headers={"X-Admin-Key": admin_key})
+        resp.raise_for_status()
+        return resp.json()
 
     def __del__(self) -> None:
         try:

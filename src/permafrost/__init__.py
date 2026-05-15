@@ -82,6 +82,15 @@ from permafrost.schema_evolution import (
     schema_diff,
 )
 
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+from permafrost.rbac import (
+    AuthError,
+    RBACManager,
+    ClusterUser,
+    generate_token,
+    validate_token,
+)
+
 # ── Auto codec selector ────────────────────────────────────────────────────────
 from permafrost.auto_codec import (
     CODEC_AUTO,
@@ -140,6 +149,8 @@ __all__ = [
     "KeyProvider", "LocalKeyProvider",
     # Schema evolution
     "SchemaEvolutionError", "apply_schema_evolution", "schema_diff",
+    # RBAC
+    "AuthError", "RBACManager", "ClusterUser", "generate_token", "validate_token",
     # Auto codec
     "CODEC_AUTO", "DataProfile", "auto_select", "profile_dataframe",
 ]

@@ -24,9 +24,11 @@ from rich.text import Text
 from rich import box
 import time
 
-app     = typer.Typer(help="❄  Permafrost — compressão extrema para arquivamento de longo prazo", add_completion=False)
-cat_app = typer.Typer(help="Gerenciar o PermafrostCatalog")
+app         = typer.Typer(help="❄  Permafrost — compressão extrema para arquivamento de longo prazo", add_completion=False)
+cat_app     = typer.Typer(help="Gerenciar o PermafrostCatalog")
+cluster_app = typer.Typer(help="Gerenciar usuários e RBAC do cluster")
 app.add_typer(cat_app, name="catalog")
+app.add_typer(cluster_app, name="cluster")
 
 console = Console(highlight=False)
 
@@ -417,6 +419,87 @@ def catalog_verify(
     else:
         console.print(Panel("[bold red]✗ Falhas detectadas[/]", border_style="red"))
     console.print()
+
+
+# ── CLUSTER RBAC ──────────────────────────────────────────────────────────────
+@cluster_app.command("add-user")
+def cluster_add_user(
+    username:   str           = typer.Argument(...,            help="Nome do usuário"),
+    can_freeze: bool          = typer.Option(False, "--can-freeze",  help="Permite freeze"),
+    can_thaw:   bool          = typer.Option(False, "--can-thaw",    help="Permite thaw"),
+    namespace:  str           = typer.Option("default", "--namespace", "-n", help="Namespace"),
+    expires_in: int           = typer.Option(0, "--expires-in",     help="Segundos até expirar (0=nunca)"),
+    master_url: str           = typer.Option("http://localhost:8700", "--master-url", "-m"),
+    admin_key:  str           = typer.Option(..., "--admin-key", "-k", help="Chave-mestra do cluster", envvar="PERMAFROST_ADMIN_KEY"),
+):
+    """Cria um usuário no cluster e exibe seu token JWT."""
+    _header()
+    from permafrost.cluster import PermafrostClient
+    client = PermafrostClient(master_url)
+    try:
+        token = client.add_user(username, can_freeze=can_freeze, can_thaw=can_thaw,
+                                namespace=namespace, expires_in=expires_in, admin_key=admin_key)
+        perms = []
+        if can_freeze: perms.append("freeze")
+        if can_thaw:   perms.append("thaw")
+        console.print(f"\n[bold green]✓ Usuário criado:[/] [cyan]{username}[/]")
+        console.print(f"  Namespace : [yellow]{namespace}[/]")
+        console.print(f"  Permissões: [yellow]{', '.join(perms) or 'nenhuma'}[/]")
+        console.print(f"  Token     : [dim]{token}[/]\n")
+    except Exception as e:
+        console.print(f"[red]Erro ao criar usuário: {e}[/]")
+        raise typer.Exit(1)
+
+
+@cluster_app.command("list-users")
+def cluster_list_users(
+    master_url: str = typer.Option("http://localhost:8700", "--master-url", "-m"),
+    admin_key:  str = typer.Option(..., "--admin-key", "-k", envvar="PERMAFROST_ADMIN_KEY"),
+):
+    """Lista usuários registrados no cluster."""
+    _header()
+    from permafrost.cluster import PermafrostClient
+    client = PermafrostClient(master_url)
+    try:
+        users = client.list_users(admin_key=admin_key)
+        if not users:
+            console.print("[dim]Nenhum usuário registrado.[/]")
+            return
+        t = Table(show_header=True, box=box.SIMPLE)
+        t.add_column("Usuário",    style="cyan")
+        t.add_column("can_freeze", justify="center")
+        t.add_column("can_thaw",   justify="center")
+        t.add_column("Namespace",  style="yellow")
+        for u in users:
+            t.add_row(u["username"],
+                      "[green]✓[/]" if u["can_freeze"] else "[red]✗[/]",
+                      "[green]✓[/]" if u["can_thaw"]   else "[red]✗[/]",
+                      u["namespace"])
+        console.print(t)
+    except Exception as e:
+        console.print(f"[red]Erro: {e}[/]")
+        raise typer.Exit(1)
+
+
+@cluster_app.command("remove-user")
+def cluster_remove_user(
+    username:   str = typer.Argument(...),
+    master_url: str = typer.Option("http://localhost:8700", "--master-url", "-m"),
+    admin_key:  str = typer.Option(..., "--admin-key", "-k", envvar="PERMAFROST_ADMIN_KEY"),
+):
+    """Remove um usuário do cluster."""
+    _header()
+    from permafrost.cluster import PermafrostClient
+    client = PermafrostClient(master_url)
+    try:
+        result = client.remove_user(username, admin_key=admin_key)
+        if result.get("existed"):
+            console.print(f"[bold green]✓ Usuário removido:[/] [cyan]{username}[/]")
+        else:
+            console.print(f"[yellow]Usuário não encontrado:[/] {username}")
+    except Exception as e:
+        console.print(f"[red]Erro: {e}[/]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
