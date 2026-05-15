@@ -1,0 +1,33 @@
+# ── Permafrost Kubernetes Operator ────────────────────────────────────────────
+# Watches PermafrostJob CRDs and submits jobs to the Permafrost Master.
+# Requires cluster RBAC configured by the Helm chart.
+#
+# Build:
+#   docker build -f Dockerfile.operator -t caua-ferreira/permafrost-operator:0.7.0 .
+#
+# Run (in-cluster via Helm):
+#   helm upgrade --install permafrost ./charts/permafrost
+
+FROM python:3.11-slim
+
+LABEL maintainer="Permafrost Contributors"
+LABEL description="Permafrost Kubernetes Operator — PermafrostJob reconciler"
+LABEL version="0.7.0"
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install dependencies (separate layer for caching)
+RUN pip install --no-cache-dir \
+    kopf>=1.36.0 \
+    httpx>=0.24.0 \
+    kubernetes>=28.0.0
+
+# Install the permafrost package (operator module only needs httpx + stdlib)
+COPY src/ ./src/
+RUN pip install --no-cache-dir -e ./src/ 2>/dev/null || true
+ENV PYTHONPATH=/app/src
+
+ENTRYPOINT ["kopf", "run", "--all-namespaces", "/app/src/permafrost/operator.py"]

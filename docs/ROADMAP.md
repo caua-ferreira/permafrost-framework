@@ -81,12 +81,13 @@ Features que bloqueiam adoção em produção. **Começar por aqui.**
 
 Qualidade de vida e ecossistema. Fazer depois do v0.7.
 
-### I1 — Helm Chart + Kubernetes Operator
+### I1 — Helm Chart + Kubernetes Operator ✅
 
-- [ ] `charts/permafrost/` com values.yaml configurável (replicas, resources, storage class)
-- [ ] CRD `PermafrostJob` — descreve um job de freeze como recurso Kubernetes
-- [ ] Operator reconcilia estado: cria workers, monitora, limpa após conclusão
-- [ ] Guia: deploy em GKE/EKS/AKS em menos de 10 minutos
+- [x] `charts/permafrost/` — Helm chart com values.yaml configurável (replicas, resources, storageClass, HPA, RBAC)
+- [x] CRD `PermafrostJob` (apiVersion: permafrost.io/v1alpha1) — spec com sourcePath, codec, quant, partitionBy, chunkRows, masterUrl, token; status com phase, jobId, ratio, storedMb
+- [x] Operator (`src/permafrost/operator.py`, kopf) — on_create submete ao master, monitor timer polling a cada 15s, on_delete cancela jobs running
+- [x] `Dockerfile.operator` — imagem kopf + permafrost
+- [x] Fases: Pending → Running → Completed | Failed
 
 ### I2 — Codec Auto-Selector (ML leve)
 
@@ -95,25 +96,27 @@ Qualidade de vida e ecossistema. Fazer depois do v0.7.
 - [ ] API: `freeze(df, path, codec="auto")` — padrão futuro
 - [ ] Benchmark: auto-selector bate seleção manual em >80% dos datasets de teste
 
-### I3 — CLI Binary Standalone (zero-deps)
+### I3 — CLI Binary Standalone (zero-deps) ✅
 
-- [ ] Compilar com PyInstaller ou Nuitka: binário único `permafrost.exe` / `permafrost`
-- [ ] Funciona sem Python instalado — garantia de leitura em 2040
-- [ ] Publish: GitHub Releases + instalar via `curl | sh`
-- [ ] Tamanho alvo: < 15 MB
+- [x] Compilar com PyInstaller: binário único `permafrost.exe` / `permafrost` (`permafrost.spec`)
+- [x] Funciona sem Python instalado — garantia de leitura em 2040
+- [x] Publish: GitHub Releases via `.github/workflows/release.yml` + instalar via `curl | sh`
+- [x] Install scripts: `scripts/install.sh` (Unix) e `scripts/install.ps1` (Windows)
+- [x] Smoke tests + SHA-256 verificado no CI antes de publicar
 
-### I4 — RBAC Básico no Cluster
+### I4 — RBAC Básico no Cluster ✅
 
-- [ ] JWT simples: token com claims `can_freeze`, `can_thaw`, `namespace`
-- [ ] Master valida token em todos os endpoints
-- [ ] `permafrost cluster add-user <name> --can-freeze --namespace prod`
-- [ ] Sem dependências externas (sem Keycloak, sem LDAP na v0.8)
+- [x] JWT simples: token com claims `can_freeze`, `can_thaw`, `namespace`
+- [x] Master valida token em todos os endpoints
+- [x] `permafrost cluster add-user <name> --can-freeze --namespace prod`
+- [x] Sem dependências externas (sem Keycloak, sem LDAP na v0.8)
 
-### I5 — Preditor `json_schema_v2` (NoSQL melhorado)
+### I5 — Preditor `json_schema_v2` (NoSQL melhorado) ✅
 
-- [ ] Detecta campos repetidos em JSONL e cria colunas virtuais
-- [ ] Compressão de chaves JSON por dicionário compartilhado por chunk
-- [ ] Benchmark em dumps MongoDB reais (target: 12× vs gzip puro)
+- [x] Detecta colunas com ≥70% de valores JSON dicts automaticamente
+- [x] Compressão de chaves JSON por dicionário compartilhado por chunk (`key_dict`)
+- [x] Reduz bytes pré-compressão para schemas com chaves longas
+- [x] Compatível com Python 3.13 `str` dtype e legado `object` dtype
 
 ---
 

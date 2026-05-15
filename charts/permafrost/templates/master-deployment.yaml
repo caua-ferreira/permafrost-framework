@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "permafrost.fullname" . }}-master
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "permafrost.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  replicas: {{ .Values.master.replicas }}
+  selector:
+    matchLabels:
+      {{- include "permafrost.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: master
+  template:
+    metadata:
+      labels:
+        {{- include "permafrost.labels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "permafrost.serviceAccountName" . }}
+      containers:
+        - name: master
+          image: "{{ .Values.master.image.repository }}:{{ .Values.master.image.tag }}"
+          imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.master.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "permafrost.fullname" . }}-config
+          {{- if .Values.secretKey }}
+          env:
+            - name: PERMAFROST_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "permafrost.fullname" . }}-secret
+                  key: PERMAFROST_SECRET_KEY
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.master.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "permafrost.fullname" . }}-data
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

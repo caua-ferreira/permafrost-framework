@@ -1,0 +1,39 @@
+{{- if and .Values.rbac.create .Values.operator.enabled -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "permafrost.fullname" . }}-operator
+  labels:
+    {{- include "permafrost.labels" . | nindent 4 }}
+rules:
+  # PermafrostJob CRD — full control
+  - apiGroups: ["permafrost.io"]
+    resources: ["permafrostjobs"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["permafrost.io"]
+    resources: ["permafrostjobs/status"]
+    verbs: ["get", "patch", "update"]
+  # Events — kopf writes events for tracing
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+  # kopf internal leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "permafrost.fullname" . }}-operator
+  labels:
+    {{- include "permafrost.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "permafrost.fullname" . }}-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "permafrost.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

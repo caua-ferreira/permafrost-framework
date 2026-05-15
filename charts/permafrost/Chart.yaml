@@ -1,0 +1,16 @@
+apiVersion: v2
+name: permafrost
+description: Permafrost — distributed intelligent compression cluster
+type: application
+version: 0.7.0
+appVersion: "0.7.0"
+home: https://github.com/caua-ferreira/permafrost-framework
+sources:
+  - https://github.com/caua-ferreira/permafrost-framework
+maintainers:
+  - name: Permafrost Contributors
+keywords:
+  - compression
+  - archival
+  - cold-storage
+  - data-engineering

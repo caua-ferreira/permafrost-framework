@@ -1,0 +1,51 @@
+{{- if .Values.operator.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "permafrost.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "permafrost.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "permafrost.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: operator
+  template:
+    metadata:
+      labels:
+        {{- include "permafrost.labels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "permafrost.serviceAccountName" . }}
+      containers:
+        - name: operator
+          image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}"
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          env:
+            - name: PERMAFROST_MASTER_URL
+              value: {{ include "permafrost.masterUrl" . | quote }}
+          {{- if .Values.secretKey }}
+            - name: PERMAFROST_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "permafrost.fullname" . }}-secret
+                  key: PERMAFROST_SECRET_KEY
+          {{- end }}
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

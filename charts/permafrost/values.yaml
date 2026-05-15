@@ -1,0 +1,100 @@
+# Default values for permafrost Helm chart.
+# Override with: helm install permafrost ./charts/permafrost -f my-values.yaml
+
+# ── Master ────────────────────────────────────────────────────────────────────
+master:
+  image:
+    repository: caua-ferreira/permafrost-master
+    tag: "0.7.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  service:
+    type: ClusterIP
+    port: 8700
+    # Set to LoadBalancer to expose externally:
+    # type: LoadBalancer
+  env:
+    PERMAFROST_MAX_RETRIES: "3"
+    PERMAFROST_HEARTBEAT_S: "10"
+    PERMAFROST_DEFAULT_CHUNK: "50000"
+
+# ── Workers ───────────────────────────────────────────────────────────────────
+worker:
+  image:
+    repository: caua-ferreira/permafrost-worker
+    tag: "0.7.0"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+# ── Operator ──────────────────────────────────────────────────────────────────
+operator:
+  enabled: true
+  image:
+    repository: caua-ferreira/permafrost-operator
+    tag: "0.7.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+# ── Persistence (shared data volume) ─────────────────────────────────────────
+persistence:
+  enabled: false
+  storageClass: ""      # "" = cluster default
+  accessMode: ReadWriteMany
+  size: 10Gi
+  # For GKE:  storageClass: "standard-rwx" (Filestore)
+  # For EKS:  storageClass: "efs-sc"        (EFS CSI driver)
+  # For AKS:  storageClass: "azurefile"
+
+# ── RBAC + ServiceAccount ─────────────────────────────────────────────────────
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""          # auto-generated from fullname if blank
+  annotations: {}   # e.g. for Workload Identity (GKE):
+                    # iam.gke.io/gcp-service-account: ...
+
+# ── Cluster config ────────────────────────────────────────────────────────────
+config:
+  maxRetries: 3
+  heartbeatSeconds: 10
+  defaultChunkRows: 50000
+
+# ── RBAC secret key (HMAC for JWT tokens) ────────────────────────────────────
+# Leave empty to disable RBAC (no authentication).
+# In production, use: --set secretKey=$(openssl rand -hex 32)
+secretKey: ""
+
+# ── Image pull secrets ────────────────────────────────────────────────────────
+imagePullSecrets: []
+
+# ── Node selector / tolerations / affinity ───────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
