@@ -9,11 +9,59 @@ Uso:
   metrics = freeze_to(df, "s3://meu-bucket/dados/vendas.permafrost", codec=CODEC_LZMA2)
 """
 
-import os, io, re, time, hashlib
+import os, io, re, time, hashlib, json, math, random
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Iterator, Tuple
 from dataclasses import dataclass
+
+# ── C4: RESUMABLE UPLOAD PRIMITIVES ──────────────────────────────────────────
+
+class ResumableUploadError(Exception):
+    """Raised when an upload fails after all retries are exhausted."""
+
+
+def _retry(fn, max_retries: int = 3, max_delay: float = 60.0):
+    """Call fn() up to max_retries times with exponential backoff + jitter."""
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except ResumableUploadError:
+            raise
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise ResumableUploadError(
+                    f"Falhou após {max_retries} tentativas: {exc}"
+                ) from exc
+            delay = min(max_delay, (2 ** attempt) + random.uniform(0, 1))
+            time.sleep(delay)
+
+
+def _state_path(local_path: str, state_file: Optional[str] = None) -> str:
+    if state_file is not None:
+        return state_file
+    return local_path + ".upload_state"
+
+
+def _load_state(sf: str) -> Optional[dict]:
+    try:
+        with open(sf, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _save_state(sf: str, state: dict) -> None:
+    with open(sf, 'w', encoding='utf-8') as f:
+        json.dump(state, f)
+
+
+def _clear_state(sf: str) -> None:
+    try:
+        os.remove(sf)
+    except FileNotFoundError:
+        pass
+
 
 # ── URI PARSER ────────────────────────────────────────────────────────────────
 @dataclass
@@ -206,6 +254,30 @@ class StorageAdapter(ABC):
         data = self.read_bytes(remote_uri)
         return data[-n_bytes:]
 
+    def upload_resumable(self, local_path: str, remote_uri: str,
+                         chunk_size: int = 8 * 1024 * 1024,
+                         state_file: Optional[str] = None,
+                         max_retries: int = 3) -> dict:
+        """Upload com retry automático (fallback para adapters sem suporte nativo).
+
+        Adapters que suportam multipart (S3) ou escrita incremental (local)
+        devem sobrescrever este método.
+
+        Args:
+            local_path: Arquivo local a enviar.
+            remote_uri: URI de destino.
+            chunk_size: Ignorado nesta implementação base.
+            state_file: Ignorado nesta implementação base.
+            max_retries: Número máximo de tentativas.
+
+        Returns:
+            Resultado de :meth:`upload`.
+        """
+        return _retry(
+            lambda: self.upload(local_path, remote_uri, show_progress=False),
+            max_retries=max_retries,
+        )
+
 
 # ── LOCAL ADAPTER (mock/testes) ───────────────────────────────────────────────
 class LocalAdapter(StorageAdapter):
@@ -360,6 +432,82 @@ class LocalAdapter(StorageAdapter):
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(data)
         return {'uri': remote_uri, 'size_bytes': len(data), 'adapter': 'local'}
+
+    def upload_resumable(self, local_path: str, remote_uri: str,
+                         chunk_size: int = 8 * 1024 * 1024,
+                         state_file: Optional[str] = None,
+                         max_retries: int = 3) -> dict:
+        """Upload incremental com estado persistido — retomável após interrupção.
+
+        O estado é guardado em ``local_path + ".upload_state"`` (ou ``state_file``).
+        Se o arquivo de estado existir e a fonte não mudou, retoma de onde parou.
+
+        Args:
+            local_path: Arquivo local a enviar.
+            remote_uri: URI de destino (local).
+            chunk_size: Bytes por bloco de escrita (padrão 8 MB).
+            state_file: Caminho customizado para o arquivo de estado.
+            max_retries: Tentativas por bloco em caso de erro.
+
+        Returns:
+            Dicionário com ``uri``, ``size_bytes``, ``upload_s``, ``adapter``
+            e ``resumed`` (bool).
+        """
+        sf = _state_path(local_path, state_file)
+        state = _load_state(sf)
+
+        dst = self._resolve(remote_uri)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        src_stat = os.stat(local_path)
+        src_size  = src_stat.st_size
+        src_mtime = src_stat.st_mtime
+
+        resumed   = False
+        bytes_done = 0
+        if state is not None:
+            if (state.get('src_mtime') == src_mtime and
+                    state.get('src_size') == src_size and
+                    state.get('remote_uri') == remote_uri and
+                    dst.exists()):
+                bytes_done = state.get('bytes_written', 0)
+                resumed = bytes_done > 0
+
+        if not resumed:
+            bytes_done = 0
+            state = {
+                'src_mtime': src_mtime,
+                'src_size': src_size,
+                'remote_uri': remote_uri,
+                'bytes_written': 0,
+            }
+            _save_state(sf, state)
+
+        t0   = time.time()
+        mode = 'r+b' if resumed else 'wb'
+        with open(local_path, 'rb') as fin, open(dst, mode) as fout:
+            fin.seek(bytes_done)
+            fout.seek(bytes_done)
+            while True:
+                chunk = fin.read(chunk_size)
+                if not chunk:
+                    break
+                def _write(c=chunk, fp=fout):
+                    fp.write(c)
+                    fp.flush()
+                _retry(_write, max_retries=max_retries)
+                bytes_done += len(chunk)
+                state['bytes_written'] = bytes_done
+                _save_state(sf, state)
+
+        _clear_state(sf)
+        return {
+            'uri':        remote_uri,
+            'size_bytes': src_size,
+            'upload_s':   round(time.time() - t0, 3),
+            'adapter':    'local',
+            'resumed':    resumed,
+        }
 
 
 # ── S3 ADAPTER ────────────────────────────────────────────────────────────────
@@ -573,6 +721,105 @@ class S3Adapter(StorageAdapter):
                            StorageClass=self.storage_class)
         return {'uri': remote_uri, 'bucket': bucket, 'key': key,
                 'size_bytes': len(data), 'adapter': 's3'}
+
+    def upload_resumable(self, local_path: str, remote_uri: str,
+                         chunk_size: int = 8 * 1024 * 1024,
+                         state_file: Optional[str] = None,
+                         max_retries: int = 3) -> dict:
+        """Upload S3 multipart com estado persistido — retomável após interrupção.
+
+        Usa a S3 Multipart Upload API: create → upload_part × N → complete.
+        O estado (upload_id + ETags das partes já enviadas) é gravado em disco
+        para que uploads interrompidos possam ser retomados sem reenviar partes.
+
+        Args:
+            local_path: Arquivo local a enviar.
+            remote_uri: URI s3:// de destino.
+            chunk_size: Bytes por parte (mínimo 5 MB imposto pela AWS).
+            state_file: Caminho customizado para o arquivo de estado.
+            max_retries: Tentativas por parte em caso de erro.
+
+        Returns:
+            Dicionário com ``uri``, ``bucket``, ``key``, ``size_bytes``,
+            ``upload_s``, ``adapter``, ``n_parts`` e ``resumed`` (bool).
+        """
+        sf = _state_path(local_path, state_file)
+        state = _load_state(sf)
+
+        bucket, key = self._parse(remote_uri)
+        src_stat  = os.stat(local_path)
+        src_size  = src_stat.st_size
+        src_mtime = src_stat.st_mtime
+        chunk_size = max(chunk_size, 5 * 1024 * 1024)  # S3 minimum per part
+
+        upload_id  = None
+        parts      = []
+        bytes_done = 0
+        resumed    = False
+
+        if state is not None:
+            if (state.get('src_mtime') == src_mtime and
+                    state.get('src_size') == src_size and
+                    state.get('remote_uri') == remote_uri and
+                    state.get('upload_id')):
+                upload_id  = state['upload_id']
+                parts      = state.get('parts', [])
+                bytes_done = sum(p['size'] for p in parts)
+                resumed    = True
+
+        if not resumed:
+            resp = self.s3.create_multipart_upload(
+                Bucket=bucket, Key=key, StorageClass=self.storage_class,
+            )
+            upload_id = resp['UploadId']
+            parts     = []
+            state     = {
+                'src_mtime': src_mtime,
+                'src_size':  src_size,
+                'remote_uri': remote_uri,
+                'upload_id': upload_id,
+                'parts':     [],
+            }
+            _save_state(sf, state)
+
+        t0       = time.time()
+        part_num = len(parts) + 1
+
+        with open(local_path, 'rb') as fin:
+            fin.seek(bytes_done)
+            while True:
+                chunk = fin.read(chunk_size)
+                if not chunk:
+                    break
+                pn = part_num
+                def _upload(c=chunk, n=pn):
+                    r = self.s3.upload_part(
+                        Body=c, Bucket=bucket, Key=key,
+                        PartNumber=n, UploadId=upload_id,
+                    )
+                    return r['ETag']
+                etag = _retry(_upload, max_retries=max_retries)
+                parts.append({'PartNumber': pn, 'ETag': etag, 'size': len(chunk)})
+                state['parts'] = parts
+                _save_state(sf, state)
+                part_num += 1
+
+        self.s3.complete_multipart_upload(
+            Bucket=bucket, Key=key, UploadId=upload_id,
+            MultipartUpload={'Parts': [{'PartNumber': p['PartNumber'], 'ETag': p['ETag']}
+                                       for p in parts]},
+        )
+        _clear_state(sf)
+        return {
+            'uri':        remote_uri,
+            'bucket':     bucket,
+            'key':        key,
+            'size_bytes': src_size,
+            'upload_s':   round(time.time() - t0, 3),
+            'adapter':    's3',
+            'n_parts':    len(parts),
+            'resumed':    resumed,
+        }
 
     def set_lifecycle(self, bucket: str, prefix: str,
                       transition_days: int = 30,

@@ -96,6 +96,7 @@ from permafrost.storage import (
     freeze_to,
     thaw_from,
     audit_remote,
+    ResumableUploadError,
 )
 
 # ── Cluster (distributed processing) ─────────────────────────────────────────
@@ -124,6 +125,7 @@ __all__ = [
     # Storage
     "LocalAdapter", "S3Adapter", "GCSAdapter", "AzureAdapter",
     "storage_from_uri", "parse_uri", "freeze_to", "thaw_from", "audit_remote",
+    "ResumableUploadError",
     # Cluster
     "PermafrostMaster", "PermafrostWorker", "PermafrostClient",
     # Encryption
