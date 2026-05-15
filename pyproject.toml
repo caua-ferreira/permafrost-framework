@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "permafrost-framework"
+version = "0.5.0"
+description = "Distributed intelligent compression for long-term data archival"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "Permafrost Contributors" }]
+keywords = ["compression","archival","lzma","cold-storage","permafrost","duckdb","distributed"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Archiving :: Compression",
+]
+dependencies = [
+    "numpy>=1.24.0", "pandas>=2.0.0", "pyarrow>=12.0.0",
+    "zstandard>=0.21.0", "duckdb>=0.9.0",
+    "typer>=0.9.0", "rich>=13.0.0",
+    "fastapi>=0.100.0", "uvicorn>=0.23.0", "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+s3        = ["boto3>=1.26.0"]
+gcs       = ["google-cloud-storage>=2.10.0"]
+azure     = ["azure-storage-blob>=12.17.0"]
+all-cloud = ["boto3>=1.26.0","google-cloud-storage>=2.10.0","azure-storage-blob>=12.17.0"]
+dev       = ["pytest>=7.0","pytest-cov","build","twine"]
+
+[project.urls]
+Homepage  = "https://github.com/SEU_USUARIO/permafrost-framework"
+Repository = "https://github.com/SEU_USUARIO/permafrost-framework"
+
+[project.scripts]
+permafrost = "permafrost.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

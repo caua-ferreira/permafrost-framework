@@ -1,0 +1,40 @@
+# Docker Compose — cluster local do Permafrost
+# Uso:
+#   docker-compose up --scale worker=3
+#   docker-compose down
+
+version: "3.9"
+
+services:
+  master:
+    build: .
+    command: python -m permafrost_cluster master
+    ports:
+      - "8700:8700"
+    environment:
+      - PERMAFROST_MASTER_HOST=0.0.0.0
+      - PERMAFROST_MASTER_PORT=8700
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build: .
+    command: python -m permafrost_cluster worker --master=http://master:8700
+    environment:
+      - PERMAFROST_MASTER_URL=http://master:8700
+    volumes:
+      - ./data:/data
+    depends_on:
+      master:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G

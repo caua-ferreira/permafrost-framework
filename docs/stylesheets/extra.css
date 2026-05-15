@@ -1,0 +1,39 @@
+/* Permafrost custom styles */
+:root {
+  --pf-cyan: #00D4FF;
+  --pf-dark: #060810;
+}
+
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--pf-cyan);
+}
+
+/* Benchmark tables */
+.md-typeset table:not([class]) th {
+  background-color: rgba(0, 212, 255, 0.1);
+}
+
+/* Code block enhancements */
+.highlight .hll {
+  background-color: rgba(0, 212, 255, 0.05);
+}
+
+/* Hero section on home page */
+.pf-hero {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.pf-hero h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+}
+
+.pf-badges {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
