@@ -1,19 +1,18 @@
 """
-Permafrost Data Framework v0.2
-Formato .permafrost — compressão extrema para arquivamento de longo prazo
+Permafrost Data Framework v0.3.0
 """
-from .permafrost_codec_v3 import (
+from .permafrost_codec import (
     freeze, thaw, audit,
     CODEC_ZSTD, CODEC_LZMA2, CODEC_ZPAQ,
     QUANT_NONE, QUANT_HIGH, QUANT_MEDIUM, QUANT_LOW,
-    MAGIC, EOF_MAGIC,
 )
 from .permafrost_catalog import PermafrostCatalog
+from .permafrost_schema_detector import SchemaDetector, DataType
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "freeze", "thaw", "audit",
-    "PermafrostCatalog",
+    "PermafrostCatalog", "SchemaDetector", "DataType",
     "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
     "QUANT_NONE", "QUANT_HIGH", "QUANT_MEDIUM", "QUANT_LOW",
 ]
