@@ -18,10 +18,27 @@ DEFAULT_CHUNK_ROWS = 10_000
 
 PRED_DELTA='delta_zigzag'; PRED_LAG1='lag1_zigzag'
 PRED_CATEGORY='category_u8'; PRED_TS='ts_delta_s'; PRED_RAW='raw_text'
+PRED_FLOAT32='float32_quantized'; PRED_FLOAT16='float16_quantized'
 
 def _sha256(b): return hashlib.sha256(b).digest()
 def _zigzag_enc(a): return np.where(a>=0,a*2,-a*2-1).astype(np.uint64)
 def _zigzag_dec(a): return np.where(a%2==0,a//2,-(a.astype(np.int64)//2)-1).astype(np.int64)
+
+def _float_quant_manifest(name, series, pred):
+    """Builds a manifest for float32/float16 quantized predictors."""
+    dtype_q = np.float32 if pred == PRED_FLOAT32 else np.float16
+    vals = pd.to_numeric(series, errors='coerce').fillna(0).to_numpy(dtype=np.float64)
+    quantized = vals.astype(dtype_q).astype(np.float64)
+    abs_err = np.abs(vals - quantized)
+    return {
+        'name': name,
+        'dtype': str(series.dtype),
+        'predictor': pred,
+        'scale': 1,
+        'precision_bits': 32 if pred == PRED_FLOAT32 else 16,
+        'max_abs_error': float(abs_err.max()) if len(abs_err) else 0.0,
+        'max_rel_error': float(np.finfo(dtype_q).eps),
+    }
 
 # ── DETECTAR predictor (chamado apenas 1x na primeira passagem) ──────────────
 def _detect_predictor(name, series, quant):
@@ -34,6 +51,12 @@ def _detect_predictor(name, series, quant):
     if is_int and is_id:
         m['predictor']=PRED_DELTA; return m
     if pd.api.types.is_float_dtype(series):
+        _special = any(x in name.lower() for x in ['lat', 'lon', 'score', 'pct'])
+        if not _special:
+            if quant == QUANT_HIGH:
+                return _float_quant_manifest(name, series, PRED_FLOAT32)
+            if quant == QUANT_LOW:
+                return _float_quant_manifest(name, series, PRED_FLOAT16)
         scale=100
         if quant>=QUANT_MEDIUM:
             if 'lat' in name or 'lon' in name: scale=10_000; m['quant']='round4'
@@ -100,6 +123,14 @@ def _encode_with_manifest(series, manifest, quant):
     if pred == PRED_RAW:
         return '\x00'.join(series.astype(str).values).encode('utf-8')
 
+    if pred == PRED_FLOAT32:
+        return pd.to_numeric(series, errors='coerce').fillna(0).to_numpy(
+            dtype=np.float64).astype(np.float32).tobytes()
+
+    if pred == PRED_FLOAT16:
+        return pd.to_numeric(series, errors='coerce').fillna(0).to_numpy(
+            dtype=np.float64).astype(np.float16).tobytes()
+
     return series.astype(str).str.encode('utf-8').str.cat(sep=b'\x00')
 
 # ── DECODE (igual v3) ─────────────────────────────────────────────────────────
@@ -122,6 +153,10 @@ def decode_column(data, manifest, n_rows):
         return pd.Series(pd.Categorical.from_codes(codes,categories=cats),name=name)
     if pred==PRED_RAW:
         return pd.Series(data.decode('utf-8').split('\x00'),name=name)
+    if pred==PRED_FLOAT32:
+        return pd.Series(np.frombuffer(data,dtype=np.float32).astype(np.float64),name=name)
+    if pred==PRED_FLOAT16:
+        return pd.Series(np.frombuffer(data,dtype=np.float16).astype(np.float64),name=name)
     return pd.Series([None]*n_rows,name=name)
 
 # ── ENCODE CHUNK (v4 — usa manifesto fixo) ───────────────────────────────────
@@ -271,6 +306,7 @@ def freeze(
     comment: str = "",
     retention_days: int = 0,
     key=None,
+    predictors: Optional[dict] = None,
 ) -> dict[str, Any]:
     """Comprime um DataFrame para o formato .permafrost.
 
@@ -341,6 +377,16 @@ def freeze(
         if manifests[col]['predictor']==PRED_CATEGORY:
             cats=df[col].astype('category')
             manifests[col]['categories']=list(cats.cat.categories.astype(str))
+
+    # ── Aplicar overrides explícitos de predictor ─────────────────────────────
+    if predictors:
+        for col, pred_name in predictors.items():
+            if col not in df.columns:
+                continue
+            if pred_name in (PRED_FLOAT32, PRED_FLOAT16):
+                manifests[col] = _float_quant_manifest(col, df[col], pred_name)
+            elif col in manifests:
+                manifests[col]['predictor'] = pred_name
 
     # ── Comprimir chunks ─────────────────────────────────────────────────────
     chunk_blobs=[]; index_entries=[]
@@ -564,6 +610,13 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
     with open(path,'rb') as f: raw=f.read()
     h=_read_header(raw[:131072]); index=_read_sparse_index(raw)
     codec_name={CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(h['codec'],'?')
+    lossy={}
+    for col,m in h['manifests'].items():
+        if m.get('predictor') in (PRED_FLOAT32, PRED_FLOAT16):
+            lossy[col]={'predictor':m['predictor'],
+                        'precision_bits':m.get('precision_bits',32),
+                        'max_abs_error':m.get('max_abs_error',0.0),
+                        'max_rel_error':m.get('max_rel_error',0.0)}
     return {'version':f"{raw[4]}.{raw[5]}",'codec':codec_name,'quant':h['quant'],
             'freeze_date':pd.Timestamp(h['freeze_ts'],unit='s').isoformat(),
             'orig_rows':h['orig_rows'],'n_chunks':h['n_chunks'],
@@ -572,5 +625,6 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
             'partition_col':index[0]['part_col'] if index else None,
             'partition_keys':[e['part_key'] for e in index],
             'comment':h['comment'],
-            'encrypted':h['encrypted'],'kms':h['enc_kms'],'key_id':h['key_id']}
+            'encrypted':h['encrypted'],'kms':h['enc_kms'],'key_id':h['key_id'],
+            'lossy_columns':lossy}
 

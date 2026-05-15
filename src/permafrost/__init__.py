@@ -45,6 +45,14 @@ from permafrost.codec import (
     QUANT_HIGH,
     QUANT_MEDIUM,
     QUANT_LOW,
+    # Predictor names
+    PRED_DELTA,
+    PRED_LAG1,
+    PRED_CATEGORY,
+    PRED_TS,
+    PRED_RAW,
+    PRED_FLOAT32,
+    PRED_FLOAT16,
     # Format constants
     MAGIC,
     EOF_MAGIC,
@@ -97,6 +105,9 @@ __all__ = [
     "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
     # Quant levels
     "QUANT_NONE", "QUANT_HIGH", "QUANT_MEDIUM", "QUANT_LOW",
+    # Predictors
+    "PRED_DELTA", "PRED_LAG1", "PRED_CATEGORY", "PRED_TS", "PRED_RAW",
+    "PRED_FLOAT32", "PRED_FLOAT16",
     # Schema
     "SchemaDetector", "DataType", "FieldKind",
     # Chunk mode
