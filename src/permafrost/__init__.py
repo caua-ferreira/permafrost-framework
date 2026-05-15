@@ -82,6 +82,14 @@ from permafrost.schema_evolution import (
     schema_diff,
 )
 
+# ── Auto codec selector ────────────────────────────────────────────────────────
+from permafrost.auto_codec import (
+    CODEC_AUTO,
+    DataProfile,
+    auto_select,
+    profile_dataframe,
+)
+
 # ── Catalog (DuckDB index) ────────────────────────────────────────────────────
 from permafrost.catalog import PermafrostCatalog
 
@@ -132,6 +140,8 @@ __all__ = [
     "KeyProvider", "LocalKeyProvider",
     # Schema evolution
     "SchemaEvolutionError", "apply_schema_evolution", "schema_diff",
+    # Auto codec
+    "CODEC_AUTO", "DataProfile", "auto_select", "profile_dataframe",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
 try:

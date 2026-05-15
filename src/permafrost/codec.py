@@ -361,6 +361,14 @@ def freeze(
         >>> print(f"Ratio: {m['ratio']:.2f}x")
         Ratio: 8.37x
     """
+    _auto_reason: Optional[str] = None
+    if codec == "auto":
+        from permafrost.auto_codec import auto_select as _auto_select
+        _sel = _auto_select(df)
+        codec = _sel["codec"]
+        quant = _sel["quant"]
+        _auto_reason = _sel["reason"]
+
     from permafrost.crypto import resolve_key, encrypt_chunk
     raw_key, kms_name, kid = resolve_key(key)
 
@@ -446,7 +454,7 @@ def freeze(
         f.write(index_sha); f.write(EOF_MAGIC)
 
     elapsed=time.time()-t0; stored=os.path.getsize(path)
-    return {'path':path,'rows':orig_rows,'cols':len(df.columns),
+    result = {'path':path,'rows':orig_rows,'cols':len(df.columns),
             'n_chunks':len(chunk_blobs),'chunk_rows':chunk_rows,
             'original_mb':round(orig_bytes/1e6,3),'stored_mb':round(stored/1e6,3),
             'ratio':round(orig_bytes/stored,3),
@@ -454,6 +462,9 @@ def freeze(
             'freeze_s':round(elapsed,3),
             'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(codec,'?'),
             'partition_by':partition_by,'index_entries':len(index_entries)}
+    if _auto_reason is not None:
+        result['auto_reason'] = _auto_reason
+    return result
 
 # ── HEADER PARSER ─────────────────────────────────────────────────────────────
 def _read_header(raw):
