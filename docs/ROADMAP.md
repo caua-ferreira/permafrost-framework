@@ -36,16 +36,16 @@ Tudo abaixo está implementado, testado e publicado no PyPI.
 
 Features que bloqueiam adoção em produção. **Começar por aqui.**
 
-### C1 — Encryption at Rest (AES-256-GCM)
+### C1 — Encryption at Rest (AES-256-GCM) ✅
 
-**Por que é crítico:** qualquer empresa em cold storage precisa de dados cifrados. Sem isso o framework não passa em avaliações de segurança.
-
-- [ ] Chave por arquivo: `freeze(df, path, key=b"32-bytes...")` ou via env `PERMAFROST_KEY`
-- [ ] Cifra por chunk, não por arquivo inteiro (permite partial thaw cifrado)
-- [ ] KMS adapter interface: `LocalKeyProvider`, `AWSKMSProvider`, `GCPKMSProvider`
-- [ ] `audit()` mostra se arquivo é cifrado + qual KMS foi usado
-- [ ] Formato: nonce (12 bytes) + tag (16 bytes) por chunk, antes do payload comprimido
-- [ ] Testes: round-trip cifrado, tamper detection (SHA-256 + GCM tag), KMS mock
+- [x] Chave por arquivo: `freeze(df, path, key=b"32-bytes...")` ou via env `PERMAFROST_KEY`
+- [x] Cifra por chunk, não por arquivo inteiro (permite partial thaw cifrado)
+- [x] KMS adapter interface: `LocalKeyProvider`, `AWSKMSProvider`, `GCPKMSProvider`
+  - Envelope encryption: EDK gerado/criptografado pelo KMS; armazenado no header do arquivo
+  - `thaw()` injeta o EDK automaticamente no provider para decriptografar sem intervenção do usuário
+- [x] `audit()` mostra se arquivo é cifrado + qual KMS foi usado + `edek_size`
+- [x] Formato: nonce (12 bytes) + tag (16 bytes) por chunk; EDK no `enc_meta` do header
+- [x] Testes: round-trip cifrado, tamper detection (SHA-256 + GCM tag), mocks AWS/GCP (69 testes)
 
 ### C2 — Preditor `float32_quantized` (lossy, alta performance)
 

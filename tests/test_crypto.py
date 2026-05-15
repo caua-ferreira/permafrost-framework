@@ -62,32 +62,39 @@ class TestLocalKeyProvider:
 class TestResolveKey:
     def test_none_returns_none_when_no_env(self, monkeypatch):
         monkeypatch.delenv("PERMAFROST_KEY", raising=False)
-        raw, kms, kid = resolve_key(None)
+        raw, kms, kid, edek = resolve_key(None)
         assert raw is None
         assert kms == ""
         assert kid == ""
+        assert edek == b""
 
     def test_bytes_wraps_in_local_provider(self):
-        raw, kms, kid = resolve_key(KEY_32)
+        raw, kms, kid, edek = resolve_key(KEY_32)
         assert raw == KEY_32
         assert kms == "local"
         assert len(kid) == 16
+        assert edek == b""
 
     def test_key_provider_passthrough(self):
         kp = LocalKeyProvider(KEY_32)
-        raw, kms, kid = resolve_key(kp)
+        raw, kms, kid, edek = resolve_key(kp)
         assert raw == KEY_32
         assert kms == "local"
+        assert edek == b""
 
     def test_env_var_hex(self, monkeypatch):
         monkeypatch.setenv("PERMAFROST_KEY", KEY_32.hex())
-        raw, kms, kid = resolve_key(None)
+        raw, kms, kid, edek = resolve_key(None)
         assert raw == KEY_32
 
     def test_env_var_wrong_length_raises(self, monkeypatch):
         monkeypatch.setenv("PERMAFROST_KEY", "deadbeef")
         with pytest.raises(ValueError, match="32-byte"):
             resolve_key(None)
+
+    def test_returns_four_tuple(self):
+        result = resolve_key(KEY_32)
+        assert len(result) == 4
 
     def test_invalid_type_raises(self):
         with pytest.raises(TypeError):

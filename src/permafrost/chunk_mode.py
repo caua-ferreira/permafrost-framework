@@ -59,7 +59,7 @@ def freeze_stream(
         ``freeze_s``, ``codec``, ``partition_by``, ``index_entries`` e
         ``mode`` (``"streaming"``).
     """
-    raw_key, kms_name, kid = resolve_key(key)
+    raw_key, kms_name, kid, edek = resolve_key(key)
 
     t0 = time.time()
     flags = FLAG_PREDICTOR | FLAG_DELTA | FLAG_CHUNKED | FLAG_INDEX | (FLAG_QUANTIZE if quant else 0)
@@ -133,7 +133,8 @@ def freeze_stream(
     enc_meta = b''
     if raw_key is not None:
         enc_meta = (struct.pack('>B', len(kms_name)) + kms_name.encode() +
-                    struct.pack('>B', len(kid)) + kid.encode())
+                    struct.pack('>B', len(kid)) + kid.encode() +
+                    struct.pack('>H', len(edek)) + edek)
 
     hdr = b''.join([
         MAGIC, VERSION,
@@ -310,7 +311,7 @@ def thaw_iter(
 
     iter_key = None
     if h['encrypted']:
-        iter_key, _, _ = resolve_key(key)
+        iter_key, _, _, _ = resolve_key(key, edek=h['enc_dek'])
         if iter_key is None:
             raise ValueError(
                 "This .permafrost file is encrypted. "

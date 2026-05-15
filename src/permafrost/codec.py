@@ -447,7 +447,7 @@ def freeze(
         _auto_reason = _sel["reason"]
 
     from permafrost.crypto import resolve_key, encrypt_chunk
-    raw_key, kms_name, kid = resolve_key(key)
+    raw_key, kms_name, kid, edek = resolve_key(key)
 
     t0=time.time(); orig_bytes=len(df.to_csv(index=False).encode()); orig_rows=len(df)
     flags=FLAG_PREDICTOR|FLAG_DELTA|FLAG_CHUNKED|FLAG_INDEX|(FLAG_QUANTIZE if quant else 0)
@@ -503,7 +503,8 @@ def freeze(
     enc_meta = b''
     if raw_key is not None:
         enc_meta = (struct.pack('>B', len(kms_name)) + kms_name.encode() +
-                    struct.pack('>B', len(kid)) + kid.encode())
+                    struct.pack('>B', len(kid)) + kid.encode() +
+                    struct.pack('>H', len(edek)) + edek)
 
     hdr=b''.join([MAGIC,VERSION,struct.pack('>H',flags),struct.pack('>B',codec),
         struct.pack('>B',quant),struct.pack('>H',len(chunk_blobs)),
@@ -557,16 +558,18 @@ def _read_header(raw):
     cl=struct.unpack('>B',rd(1))[0]; comment=rd(cl).decode()
     freeze_ts=struct.unpack('>q',rd(8))[0]; rd(4)
     orig_rows=struct.unpack('>Q',rd(8))[0]; stored_rows=struct.unpack('>Q',rd(8))[0]; rd(8)
-    enc_kms=''; key_id=''
+    enc_kms=''; key_id=''; enc_dek=b''
     if flags & FLAG_ENCRYPTED:
         kl=struct.unpack('>B',rd(1))[0]; enc_kms=rd(kl).decode()
         kil=struct.unpack('>B',rd(1))[0]; key_id=rd(kil).decode()
+        edek_len=struct.unpack('>H',rd(2))[0]; enc_dek=rd(edek_len)
     hdr_end=p; hdr_sha=rd(32)
     return {'flags':flags,'codec':codec,'quant':quant,'n_chunks':n_chunks,
             'chunk_rows':chunk_rows,'manifests':manifests,'comment':comment,
             'freeze_ts':freeze_ts,'orig_rows':orig_rows,'stored_rows':stored_rows,
             'hdr_end':hdr_end,'hdr_sha_stored':hdr_sha,'payload_start':p,
-            'encrypted':bool(flags & FLAG_ENCRYPTED),'enc_kms':enc_kms,'key_id':key_id}
+            'encrypted':bool(flags & FLAG_ENCRYPTED),'enc_kms':enc_kms,'key_id':key_id,
+            'enc_dek':enc_dek}
 
 def _read_sparse_index(raw):
     if raw[-4:]!=EOF_MAGIC: raise ValueError("EOF magic ausente")
@@ -620,7 +623,7 @@ def thaw(
 
     raw_key = None
     if h['encrypted']:
-        raw_key, _, _ = resolve_key(key)
+        raw_key, _, _, _ = resolve_key(key, edek=h['enc_dek'])
         if raw_key is None:
             raise ValueError(
                 "This .permafrost file is encrypted. "
@@ -721,5 +724,6 @@ def audit(path: str | os.PathLike) -> dict[str, Any]:
             'partition_keys':[e['part_key'] for e in index],
             'comment':h['comment'],
             'encrypted':h['encrypted'],'kms':h['enc_kms'],'key_id':h['key_id'],
+            'edek_size':len(h.get('enc_dek', b'')),
             'lossy_columns':lossy}
 

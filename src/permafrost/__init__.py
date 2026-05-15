@@ -74,7 +74,7 @@ from permafrost.chunk_mode import (
 )
 
 # ── Encryption ────────────────────────────────────────────────────────────────
-from permafrost.crypto import KeyProvider, LocalKeyProvider
+from permafrost.crypto import KeyProvider, LocalKeyProvider, AWSKMSProvider, GCPKMSProvider
 
 # ── Schema evolution ──────────────────────────────────────────────────────────
 from permafrost.schema_evolution import (
@@ -147,7 +147,7 @@ __all__ = [
     # Cluster
     "PermafrostMaster", "PermafrostWorker", "PermafrostClient",
     # Encryption
-    "KeyProvider", "LocalKeyProvider",
+    "KeyProvider", "LocalKeyProvider", "AWSKMSProvider", "GCPKMSProvider",
     # Schema evolution
     "SchemaEvolutionError", "apply_schema_evolution", "schema_diff",
     # RBAC
