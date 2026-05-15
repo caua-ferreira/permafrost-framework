@@ -37,3 +37,9 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+.claude
+
+
+HANDOFF.md
+KNOWN_ISSUES.md
