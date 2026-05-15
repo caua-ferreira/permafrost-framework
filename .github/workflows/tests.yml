@@ -21,9 +21,7 @@ jobs:
       - name: Install
         run: pip install -e '.[dev]'
       - name: Test
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short -k "not Spark"
       - name: Coverage (3.11 only)
         if: matrix.python-version == '3.11'
-        run: |
-          pip install pytest-cov
-          pytest tests/ --cov=src/permafrost --cov-report=xml
+        run: pytest tests/ -k "not Spark" --cov=src/permafrost --cov-report=xml

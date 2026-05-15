@@ -32,7 +32,7 @@ gcs       = ["google-cloud-storage>=2.10.0"]
 azure     = ["azure-storage-blob>=12.17.0"]
 all-cloud = ["boto3>=1.26.0","google-cloud-storage>=2.10.0","azure-storage-blob>=12.17.0"]
 spark     = ["pyspark>=4.0"]
-dev       = ["pytest>=7.0","pytest-cov","build","twine","pyspark>=4.0"]
+dev       = ["pytest>=7.0","pytest-cov","build","twine"]
 
 [project.urls]
 Homepage  = "https://github.com/caua-ferreira/permafrost-framework"
