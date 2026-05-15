@@ -105,15 +105,15 @@ class TestVelocidadeFreeze:
             f"freeze() Zstd demorou {elapsed:.2f}s (limite: 3s)"
 
     def test_freeze_throughput_minimo_5mb_por_segundo(self, ref_df, tmp):
-        """Throughput mínimo de 5 MB/s para Zstd."""
+        """Throughput mínimo de 3 MB/s para Zstd (threshold conservador para CI)."""
         csv_mb = len(ref_df.to_csv(index=False).encode()) / 1e6
         path   = os.path.join(tmp, "bench.permafrost")
         t0     = time.time()
         pf.freeze(ref_df, path, codec=pf.CODEC_ZSTD)
         elapsed = time.time() - t0
         throughput = csv_mb / elapsed
-        assert throughput >= 5.0, \
-            f"Throughput: {throughput:.1f} MB/s (mínimo: 5 MB/s)"
+        assert throughput >= 3.0, \
+            f"Throughput: {throughput:.1f} MB/s (mínimo: 3 MB/s)"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

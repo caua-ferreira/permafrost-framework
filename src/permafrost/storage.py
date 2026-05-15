@@ -38,7 +38,7 @@ class ParsedURI:
 
     @property
     def filename(self):
-        return self.key.split("/")[-1]
+        return Path(self.key).name if self.key else ""
 
     @property
     def is_directory(self):
@@ -159,7 +159,14 @@ class LocalAdapter(StorageAdapter):
         dst.parent.mkdir(parents=True, exist_ok=True)
         size = os.path.getsize(local_path)
         import shutil
-        shutil.copy2(local_path, dst)
+        for attempt in range(3):
+            try:
+                shutil.copy2(local_path, dst)
+                break
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.1 * (attempt + 1))
         elapsed = time.time()-t0
         if show_progress:
             print(f"  ✓ [local] {local_path} → {dst}  ({size/1e6:.2f}MB, {elapsed:.2f}s)")

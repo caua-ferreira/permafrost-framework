@@ -28,7 +28,7 @@ app     = typer.Typer(help="❄  Permafrost — compressão extrema para arquiva
 cat_app = typer.Typer(help="Gerenciar o PermafrostCatalog")
 app.add_typer(cat_app, name="catalog")
 
-console = Console()
+console = Console(highlight=False)
 
 CODECS = {"lzma2": 0x02, "zstd": 0x01}
 QUANTS = {"none": 0x00, "high": 0x01, "medium": 0x02, "low": 0x03}
@@ -41,10 +41,14 @@ def _load():
     return pf_freeze, pf_thaw, pf_audit, SchemaDetector
 
 def _header():
-    console.print(Panel.fit(
-        "[bold cyan]❄  Permafrost Data Framework[/] [dim]v0.3.0[/]",
-        border_style="cyan", padding=(0,2)
-    ))
+    from permafrost import __version__
+    try:
+        console.print(Panel.fit(
+            f"[bold cyan]*  Permafrost Data Framework[/] [dim]v{__version__}[/]",
+            border_style="cyan", padding=(0,2)
+        ))
+    except UnicodeEncodeError:
+        console.print(f"[bold cyan]* Permafrost Data Framework[/] [dim]v{__version__}[/]")
 
 # ── FREEZE ────────────────────────────────────────────────────────────────────
 @app.command()
