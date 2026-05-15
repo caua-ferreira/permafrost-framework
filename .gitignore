@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Dados gerados
+data/samples/*.csv
+data/samples/*.permafrost
+*.permafrost
+
+# Resultados de benchmark (gerados em runtime)
+benchmarks/results/*.json
+!benchmarks/results/README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Cobertura de testes
+.coverage
+htmlcov/
+.pytest_cache/
