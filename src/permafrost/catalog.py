@@ -12,7 +12,7 @@ Features:
   - stats()               → métricas gerais do catalog
 """
 
-import os, json, hashlib, time, re
+import os, json, hashlib, time, re, threading
 import duckdb
 import pandas as pd
 import numpy as np
@@ -96,6 +96,7 @@ class PermafrostCatalog:
 
         O catálogo indexa arquivos ``.permafrost`` lendo apenas o header e o
         sparse index — zero decompressão. Todas as consultas são SQL DuckDB.
+        Thread-safe: todas as operações são protegidas por RLock.
 
         Args:
             catalog_path: Caminho do arquivo DuckDB. Use ``":memory:"`` para
@@ -106,12 +107,14 @@ class PermafrostCatalog:
             >>> cat = PermafrostCatalog(":memory:")  # testes
         """
         self.catalog_path = catalog_path
+        self._lock = threading.RLock()
         self.con = duckdb.connect(catalog_path)
         self.con.execute(CATALOG_SCHEMA)
         self._print_header()
 
     def _print_header(self):
-        n = self.con.execute("SELECT COUNT(*) FROM datasets").fetchone()[0]
+        with self._lock:
+            n = self.con.execute("SELECT COUNT(*) FROM datasets").fetchone()[0]
         print(f"PermafrostCatalog  →  {self.catalog_path}")
         print(f"  {n} dataset(s) registrado(s)\n")
 
@@ -124,57 +127,58 @@ class PermafrostCatalog:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Arquivo não encontrado: {path}")
 
-        # Verificar se já está registrado
-        existing = self.con.execute(
-            "SELECT id FROM datasets WHERE path = ?", [path]
-        ).fetchone()
-        if existing:
-            return {'status': 'already_registered', 'path': path, 'id': existing[0]}
-
-        # Ler metadados via audit() — zero decompressão
+        # Ler metadados via audit() — zero decompressão (fora do lock)
         info = pf_audit(path)
 
-        # Derivar campos
-        ds_name     = name or os.path.splitext(os.path.basename(path))[0]
-        schema_hash = hashlib.sha256(
-            json.dumps(sorted(info['columns'])).encode()
-        ).hexdigest()[:16]
-        part_keys   = json.dumps(info.get('partition_keys', []))
-        columns_j   = json.dumps(info['columns'])
-        tags_j      = json.dumps(tags or [])
-        freeze_ts   = info['freeze_date']
+        with self._lock:
+            # Verificar se já está registrado
+            existing = self.con.execute(
+                "SELECT id FROM datasets WHERE path = ?", [path]
+            ).fetchone()
+            if existing:
+                return {'status': 'already_registered', 'path': path, 'id': existing[0]}
 
-        # Inserir dataset
-        ds_id = self.con.execute("SELECT nextval('dataset_seq')").fetchone()[0]
-        self.con.execute("""
-            INSERT INTO datasets
-            (id, name, path, freeze_date, codec, quant_level, orig_rows,
-             n_chunks, chunk_rows, file_size_bytes, file_size_mb,
-             partition_col, partition_keys, columns, comment, tags, schema_hash)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, [
-            ds_id, ds_name, path, freeze_ts,
-            info['codec'], info['quant'],
-            info['orig_rows'], info['n_chunks'], info['chunk_rows'],
-            int(info['file_size_mb'] * 1e6), info['file_size_mb'],
-            info.get('partition_col'), part_keys,
-            columns_j, info.get('comment',''), tags_j, schema_hash,
-        ])
+            # Derivar campos
+            ds_name     = name or os.path.splitext(os.path.basename(path))[0]
+            schema_hash = hashlib.sha256(
+                json.dumps(sorted(info['columns'])).encode()
+            ).hexdigest()[:16]
+            part_keys   = json.dumps(info.get('partition_keys', []))
+            columns_j   = json.dumps(info['columns'])
+            tags_j      = json.dumps(tags or [])
+            freeze_ts   = info['freeze_date']
 
-        # Inserir chunks do sparse index
-        for entry in info.get('index_entries', []):
-            chunk_id = self.con.execute("SELECT nextval('chunk_seq')").fetchone()[0]
+            # Inserir dataset
+            ds_id = self.con.execute("SELECT nextval('dataset_seq')").fetchone()[0]
             self.con.execute("""
-                INSERT INTO chunks
-                (id, dataset_id, chunk_id, row_start, row_end,
-                 part_key, part_col, byte_offset, byte_len, sha256)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO datasets
+                (id, name, path, freeze_date, codec, quant_level, orig_rows,
+                 n_chunks, chunk_rows, file_size_bytes, file_size_mb,
+                 partition_col, partition_keys, columns, comment, tags, schema_hash)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, [
-                chunk_id, ds_id,
-                entry['chunk_id'], entry['row_start'], entry['row_end'],
-                entry['part_key'], entry['part_col'],
-                entry['byte_offset'], entry['byte_len'], entry['sha256'],
+                ds_id, ds_name, path, freeze_ts,
+                info['codec'], info['quant'],
+                info['orig_rows'], info['n_chunks'], info['chunk_rows'],
+                int(info['file_size_mb'] * 1e6), info['file_size_mb'],
+                info.get('partition_col'), part_keys,
+                columns_j, info.get('comment',''), tags_j, schema_hash,
             ])
+
+            # Inserir chunks do sparse index
+            for entry in info.get('index_entries', []):
+                chunk_id = self.con.execute("SELECT nextval('chunk_seq')").fetchone()[0]
+                self.con.execute("""
+                    INSERT INTO chunks
+                    (id, dataset_id, chunk_id, row_start, row_end,
+                     part_key, part_col, byte_offset, byte_len, sha256)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                """, [
+                    chunk_id, ds_id,
+                    entry['chunk_id'], entry['row_start'], entry['row_end'],
+                    entry['part_key'], entry['part_col'],
+                    entry['byte_offset'], entry['byte_len'], entry['sha256'],
+                ])
 
         return {
             'status': 'registered', 'id': ds_id, 'name': ds_name,
@@ -257,7 +261,8 @@ class PermafrostCatalog:
             WHERE {where}
             ORDER BY freeze_date DESC
         """
-        return self.con.execute(sql, params).df()
+        with self._lock:
+            return self.con.execute(sql, params).df()
 
     def search_chunks(self, dataset_name: str, part_key: str = None) -> pd.DataFrame:
         """Busca chunks de um dataset com filtro por partition key."""
@@ -274,7 +279,8 @@ class PermafrostCatalog:
             sql += " AND c.part_key LIKE ?"
             params.append(f"%{part_key}%")
         sql += " ORDER BY c.chunk_id"
-        return self.con.execute(sql, params).df()
+        with self._lock:
+            return self.con.execute(sql, params).df()
 
     # ── THAW via CATALOG ──────────────────────────────────────────────────────
     def thaw(self, name: str, filter: dict = None, row_range: tuple = None,
@@ -282,10 +288,11 @@ class PermafrostCatalog:
         """
         Encontra o dataset pelo nome e executa thaw com seleção via sparse index.
         """
-        result = self.con.execute(
-            "SELECT path, partition_col FROM datasets WHERE name LIKE ? LIMIT 1",
-            [f"%{name}%"]
-        ).fetchone()
+        with self._lock:
+            result = self.con.execute(
+                "SELECT path, partition_col FROM datasets WHERE name LIKE ? LIMIT 1",
+                [f"%{name}%"]
+            ).fetchone()
         if not result:
             raise KeyError(f"Dataset '{name}' não encontrado no catalog. Use search() para listar.")
         path, part_col = result
@@ -326,7 +333,8 @@ class PermafrostCatalog:
             FROM datasets
             ORDER BY file_size_mb DESC
         """
-        df = self.con.execute(sql).df()
+        with self._lock:
+            df = self.con.execute(sql).df()
         df['cost_monthly_usd'] = (df['size_mb'] / 1024) * price
         df['cost_annual_usd']  = df['cost_monthly_usd'] * 12
         df['cost_3yr_usd']     = df['cost_monthly_usd'] * 36
@@ -345,7 +353,8 @@ class PermafrostCatalog:
             sql += " WHERE name LIKE ?"
             params.append(f"%{name_filter}%")
 
-        datasets_rows = self.con.execute(sql, params).fetchall()
+        with self._lock:
+            datasets_rows = self.con.execute(sql, params).fetchall()
         results = []
 
         for ds_id, ds_name, path in datasets_rows:
@@ -357,10 +366,11 @@ class PermafrostCatalog:
             with open(path, 'rb') as f:
                 raw = f.read()
 
-            chunks = self.con.execute(
-                "SELECT chunk_id, byte_offset, byte_len, sha256 FROM chunks WHERE dataset_id = ?",
-                [ds_id]
-            ).fetchall()
+            with self._lock:
+                chunks = self.con.execute(
+                    "SELECT chunk_id, byte_offset, byte_len, sha256 FROM chunks WHERE dataset_id = ?",
+                    [ds_id]
+                ).fetchall()
 
             ok_count = fail_count = 0
             for chunk_id, offset, length, sha_stored in chunks:
@@ -372,10 +382,11 @@ class PermafrostCatalog:
                     fail_count += 1
 
             status = 'OK' if fail_count == 0 else 'CORRUPTED'
-            self.con.execute("""
-                UPDATE datasets SET last_verified = CURRENT_TIMESTAMP, verified_ok = ?
-                WHERE id = ?
-            """, [fail_count == 0, ds_id])
+            with self._lock:
+                self.con.execute("""
+                    UPDATE datasets SET last_verified = CURRENT_TIMESTAMP, verified_ok = ?
+                    WHERE id = ?
+                """, [fail_count == 0, ds_id])
             results.append({
                 'name': ds_name, 'status': status,
                 'chunks_ok': ok_count, 'chunks_fail': fail_count,
@@ -406,7 +417,8 @@ class PermafrostCatalog:
             >>> s = cat.stats()
             >>> print(f"{s['total_datasets']} datasets, {s['total_rows']:,} linhas")
         """
-        r = self.con.execute("""
+        with self._lock:
+            r = self.con.execute("""
             SELECT
                 COUNT(*)                          as total_datasets,
                 SUM(orig_rows)                    as total_rows,
@@ -428,14 +440,10 @@ class PermafrostCatalog:
     # ── SQL DIRETO ────────────────────────────────────────────────────────────
     def sql(self, query: str) -> pd.DataFrame:
         """Executa SQL direto no catalog DuckDB."""
-        return self.con.execute(query).df()
+        with self._lock:
+            return self.con.execute(query).df()
 
     def __repr__(self):
-        n = self.con.execute("SELECT COUNT(*) FROM datasets").fetchone()[0]
+        with self._lock:
+            n = self.con.execute("SELECT COUNT(*) FROM datasets").fetchone()[0]
         return f"<PermafrostCatalog path='{self.catalog_path}' datasets={n}>"
-
-
-print("permafrost_catalog.py carregado")
-print("  Classes: PermafrostCatalog")
-print("  Métodos: register, register_dir, search, search_chunks, thaw,")
-print("           cost_report, integrity_check, stats, sql")
