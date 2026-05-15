@@ -1,0 +1,57 @@
+# ── Permafrost Worker Node ────────────────────────────────────────────────────
+# Imagem do nó de processamento do cluster Permafrost.
+# Publicada em: docker.io/SEU_USUARIO/permafrost-worker
+#
+# Uso:
+#   docker run \
+#     -e PERMAFROST_MASTER_URL=http://master:8700 \
+#     -v /meus/dados:/data \
+#     SEU_USUARIO/permafrost-worker
+
+FROM python:3.11-slim
+
+LABEL maintainer="Permafrost Contributors"
+LABEL description="Permafrost Cluster Worker — compression node"
+LABEL version="0.5.1"
+
+# Dependências do sistema — inclui zpaq para CODEC_ZPAQ
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    zpaq \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instalar dependências Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    fastapi>=0.100.0 \
+    uvicorn>=0.23.0 \
+    httpx>=0.24.0 \
+    numpy>=1.24.0 \
+    pandas>=2.0.0 \
+    pyarrow>=12.0.0 \
+    zstandard>=0.21.0 \
+    duckdb>=0.9.0
+
+# Instalar o pacote
+COPY src/ ./src/
+RUN pip install --no-cache-dir -e ./src/ 2>/dev/null || true
+ENV PYTHONPATH=/app/src
+
+# Configuração via variáveis de ambiente
+ENV PERMAFROST_MASTER_URL=http://master:8700
+ENV PERMAFROST_WORKER_HOST=0.0.0.0
+ENV PERMAFROST_WORKER_PORT=8801
+
+# Volume de dados — compartilhado com o Master via bind mount ou NFS
+VOLUME ["/data"]
+
+EXPOSE 8801
+
+# Healthcheck
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:${PERMAFROST_WORKER_PORT}/health || exit 1
+
+ENTRYPOINT ["python", "-m", "permafrost", "worker"]
+CMD ["--master", "http://master:8700", "--host", "0.0.0.0", "--port", "8801"]

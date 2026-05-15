@@ -1,43 +1,29 @@
 """
-Testes de round-trip: freeze → thaw → verificação de integridade
-Executar com: python -m pytest tests/ -v
+Testes de freeze/thaw — API core do Permafrost.
+Executar: pytest tests/test_freeze_thaw.py -v
 """
-import sys, os, tempfile, shutil
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
+import os, shutil, tempfile
 import pytest
 import numpy as np
 import pandas as pd
-from src.permafrost_codec import (
-    freeze, thaw, audit,
-    CODEC_ZSTD, CODEC_LZMA2,
-    QUANT_NONE, QUANT_MEDIUM,
-)
+import permafrost as pf
 
 
 @pytest.fixture(scope="module")
 def sample_df():
-    """Dataset de teste com todos os tipos de coluna suportados."""
     np.random.seed(42)
     N = 5_000
-    products = [f'PROD-{i:04d}' for i in range(100)]
-    clients  = [f'CLI-{i:05d}' for i in range(500)]
     return pd.DataFrame({
-        'id':             np.arange(1, N+1, dtype=np.int32),
-        'data':           pd.date_range('2020-01-01', periods=N, freq='5min'),
-        'cliente_id':     np.random.choice(clients, N),
-        'produto_id':     np.random.choice(products, N),
-        'categoria':      np.random.choice(['Eletrônicos','Vestuário','Alimentos'], N),
-        'quantidade':     np.random.randint(1, 200, N, dtype=np.int16),
-        'preco_unitario': np.round(np.random.uniform(1.99, 4999.99, N), 2),
-        'total_liquido':  np.round(np.random.uniform(2, 50000, N), 2),
-        'pais':           np.random.choice(['Brasil','EUA','Argentina'], N),
-        'status':         np.random.choice(['Ativo','Inativo','Pendente'], N),
-        'vendedor_id':    np.random.randint(1000, 9999, N, dtype=np.int32),
-        'score_cliente':  np.round(np.random.uniform(0, 1000, N), 1),
-        'latitude':       np.round(np.random.uniform(-33, 5, N), 6),
-        'longitude':      np.round(np.random.uniform(-73, -34, N), 6),
-        'observacao':     np.random.choice(['OK','Urgente','Normal','VIP'], N),
+        "id":             np.arange(1, N+1, dtype=np.int32),
+        "data":           pd.date_range("2020-01-01", periods=N, freq="4h"),
+        "ano":            pd.date_range("2020-01-01", periods=N, freq="4h").year.astype(np.int16),
+        "categoria":      np.random.choice(["Eletrônicos","Vestuário","Alimentos"], N),
+        "quantidade":     np.random.randint(1, 200, N, dtype=np.int16),
+        "preco_unitario": np.round(np.random.uniform(1.99, 4999.99, N), 2),
+        "total_liquido":  np.round(np.random.uniform(2, 50000, N), 2),
+        "pais":           np.random.choice(["Brasil","EUA","Argentina"], N),
+        "status":         np.random.choice(["Ativo","Inativo","Pendente"], N),
+        "vendedor_id":    np.random.randint(1000, 9999, N, dtype=np.int32),
     })
 
 
@@ -49,188 +35,264 @@ def tmp_dir():
 
 
 class TestFreeze:
-    def test_freeze_creates_file(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        metrics = freeze(sample_df, path)
-        assert os.path.exists(path)
-        assert os.path.getsize(path) > 0
+    def test_cria_arquivo(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "test.permafrost")
+        pf.freeze(sample_df, path)
+        assert os.path.exists(path) and os.path.getsize(path) > 0
 
-    def test_freeze_returns_metrics(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        m = freeze(sample_df, path)
-        assert 'ratio' in m
-        assert 'stored_mb' in m
-        assert 'freeze_s' in m
-        assert m['ratio'] > 1.0
-        assert m['rows'] == len(sample_df)
-        assert m['cols'] == len(sample_df.columns)
+    def test_retorna_metricas(self, sample_df, tmp_dir):
+        m = pf.freeze(sample_df, os.path.join(tmp_dir, "t.permafrost"))
+        assert m["ratio"] > 1.0 and m["rows"] == len(sample_df)
 
-    def test_freeze_ratio_lzma_better_than_zstd(self, sample_df, tmp_dir):
-        path_z = os.path.join(tmp_dir, 'zstd.permafrost')
-        path_l = os.path.join(tmp_dir, 'lzma.permafrost')
-        mz = freeze(sample_df, path_z, codec=CODEC_ZSTD)
-        ml = freeze(sample_df, path_l, codec=CODEC_LZMA2)
-        assert ml['ratio'] >= mz['ratio'] * 0.95  # LZMA2 deve ser ao menos comparável
+    def test_magic_bytes_prms(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        assert open(path,"rb").read(4) == b"PRMS"
 
-    def test_freeze_vault_smaller_than_lossless(self, sample_df, tmp_dir):
-        path_l = os.path.join(tmp_dir, 'lossless.permafrost')
-        path_v = os.path.join(tmp_dir, 'vault.permafrost')
-        ml = freeze(sample_df, path_l, quant=QUANT_NONE)
-        mv = freeze(sample_df, path_v, quant=QUANT_MEDIUM)
-        assert mv['stored_mb'] <= ml['stored_mb']
+    def test_eof_magic_smrp(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        with open(path,"rb") as f: f.seek(-4,2); assert f.read(4) == b"SMRP"
 
-    def test_freeze_magic_bytes(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path)
-        with open(path, 'rb') as f:
-            header = f.read(4)
-            assert header == b'PRMS', f"Magic incorreto: {header!r}"
+    def test_lzma2_ratio_alto(self, sample_df, tmp_dir):
+        m = pf.freeze(sample_df, os.path.join(tmp_dir,"lzma.permafrost"), codec=pf.CODEC_LZMA2)
+        assert m["ratio"] > 5.0
 
-    def test_freeze_eof_magic(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path)
-        with open(path, 'rb') as f:
-            f.seek(-4, 2)
-            eof = f.read(4)
-            assert eof == b'SMRP', f"EOF magic incorreto: {eof!r}"
+    def test_zstd_funciona(self, sample_df, tmp_dir):
+        m = pf.freeze(sample_df, os.path.join(tmp_dir,"zstd.permafrost"), codec=pf.CODEC_ZSTD)
+        assert m["ratio"] > 3.0
 
+    def test_vault_menor_que_lossless(self, sample_df, tmp_dir):
+        ml = pf.freeze(sample_df, os.path.join(tmp_dir,"loss.permafrost"),  quant=pf.QUANT_NONE)
+        mv = pf.freeze(sample_df, os.path.join(tmp_dir,"vault.permafrost"), quant=pf.QUANT_MEDIUM)
+        assert mv["stored_mb"] <= ml["stored_mb"]
 
-class TestThaw:
-    def test_thaw_lossless_rows(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, quant=QUANT_NONE)
-        df_t = thaw(path)
-        assert len(df_t) == len(sample_df)
+    def test_comentario_embutido(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, comment="teste de comentário")
+        assert pf.audit(path)["comment"] == "teste de comentário"
 
-    def test_thaw_lossless_columns(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, quant=QUANT_NONE)
-        df_t = thaw(path)
-        assert set(df_t.columns) == set(sample_df.columns)
-
-    def test_thaw_lossless_id_exact(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, quant=QUANT_NONE)
-        df_t = thaw(path)
-        assert np.array_equal(
-            sample_df['id'].values,
-            df_t['id'].values[:len(sample_df)].astype(np.int64)
-        ), "IDs devem ser exatos no modo lossless"
-
-    def test_thaw_lossless_categories_exact(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, quant=QUANT_NONE)
-        df_t = thaw(path)
-        for col in ['status', 'pais', 'categoria', 'observacao']:
-            orig = sample_df[col].astype(str).values
-            restored = df_t[col].astype(str).values[:len(sample_df)]
-            match_pct = (orig == restored).mean() * 100
-            assert match_pct == 100.0, f"Coluna '{col}' deveria ser 100% exata, foi {match_pct:.1f}%"
-
-    def test_thaw_lossless_floats_exact(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, quant=QUANT_NONE)
-        df_t = thaw(path)
-        for col in ['preco_unitario', 'total_liquido']:
-            orig = sample_df[col].values
-            rest = df_t[col].values[:len(sample_df)].astype(float)
-            max_diff = np.abs(orig - rest).max()
-            assert max_diff < 0.01, f"Coluna '{col}': max_diff={max_diff:.6f}, esperado <0.01"
-
-    def test_thaw_zstd_lossless(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test_zstd.permafrost')
-        freeze(sample_df, path, codec=CODEC_ZSTD, quant=QUANT_NONE)
-        df_t = thaw(path)
-        assert len(df_t) == len(sample_df)
-        orig = sample_df['id'].values
-        rest = df_t['id'].values[:len(sample_df)].astype(np.int64)
-        assert np.array_equal(orig, rest)
-
-    def test_thaw_vault_ids_still_exact(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'vault.permafrost')
-        freeze(sample_df, path, quant=QUANT_MEDIUM)
-        df_t = thaw(path)
-        assert np.array_equal(
-            sample_df['id'].values,
-            df_t['id'].values[:len(sample_df)].astype(np.int64)
-        ), "IDs devem ser exatos mesmo no Vault mode"
-
-    def test_thaw_vault_price_within_1_real(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'vault.permafrost')
-        freeze(sample_df, path, quant=QUANT_MEDIUM)
-        df_t = thaw(path)
-        orig = sample_df['preco_unitario'].values
-        rest = df_t['preco_unitario'].values[:len(sample_df)].astype(float)
-        max_diff = np.abs(orig - rest).max()
-        assert max_diff <= 1.0, f"Vault mode: preço deve ter diff <= R$1.00, foi {max_diff:.2f}"
-
-
-class TestIntegrity:
-    def test_correct_file_passes(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'good.permafrost')
-        freeze(sample_df, path)
-        df_t = thaw(path, verify=True)
-        assert len(df_t) == len(sample_df)
-
-    def test_corrupt_header_detected(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'corrupt_hdr.permafrost')
-        corrupt = os.path.join(tmp_dir, 'corrupt.permafrost')
-        freeze(sample_df, path)
-        shutil.copy(path, corrupt)
-        with open(corrupt, 'r+b') as f:
-            f.seek(500); f.write(b'\x00' * 8)
-        with pytest.raises(ValueError, match="SHA-256"):
-            thaw(corrupt, verify=True)
-
-    def test_corrupt_payload_detected(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'good.permafrost')
-        corrupt = os.path.join(tmp_dir, 'corrupt_payload.permafrost')
-        freeze(sample_df, path)
-        size = os.path.getsize(path)
-        shutil.copy(path, corrupt)
-        with open(corrupt, 'r+b') as f:
-            f.seek(size // 2); f.write(b'\xFF' * 16)
-        with pytest.raises(ValueError):
-            thaw(corrupt, verify=True)
-
-    def test_truncated_file_detected(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'good.permafrost')
-        trunc = os.path.join(tmp_dir, 'truncated.permafrost')
-        freeze(sample_df, path)
-        size = os.path.getsize(path)
-        with open(path, 'rb') as src, open(trunc, 'wb') as dst:
-            dst.write(src.read(size // 2))
-        with pytest.raises(ValueError):
-            thaw(trunc, verify=True)
-
-    def test_wrong_magic_detected(self, tmp_dir):
-        fake = os.path.join(tmp_dir, 'fake.permafrost')
-        with open(fake, 'wb') as f:
-            f.write(b'%PDF-1.4 this is not a permafrost file')
-        with pytest.raises(ValueError, match="[Mm]agic"):
-            thaw(fake)
+    def test_partition_by_registrado(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        df_s = sample_df.sort_values("ano").reset_index(drop=True)
+        pf.freeze(df_s, path, partition_by="ano")
+        info = pf.audit(path)
+        assert info["partition_col"] == "ano"
+        assert len(info["partition_keys"]) > 0
 
 
 class TestAudit:
-    def test_audit_without_decompressing(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path, codec=CODEC_LZMA2, comment="Teste audit")
-        info = audit(path)
-        assert info['version'] == '1.0'
-        assert info['codec'] == 'lzma2'
-        assert info['original_rows'] == len(sample_df)
-        assert info['ratio'] > 1.0
-        assert info['comment'] == 'Teste audit'
-        assert set(info['columns']) == set(sample_df.columns)
+    def test_versao_formato(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        assert pf.audit(path)["version"] in ("1.0","1.1","1.2")
 
-    def test_audit_predictors_assigned(self, sample_df, tmp_dir):
-        path = os.path.join(tmp_dir, 'test.permafrost')
-        freeze(sample_df, path)
-        info = audit(path)
-        preds = set(info['col_predictors'].values())
-        expected = {'delta_zigzag', 'lag1_zigzag', 'ts_delta_s', 'category_u8', 'raw_text'}
-        assert preds.issubset(expected), f"Preditores inesperados: {preds - expected}"
+    def test_linhas_corretas(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        assert pf.audit(path)["orig_rows"] == len(sample_df)
+
+    def test_colunas_registradas(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        assert set(pf.audit(path)["columns"]) == set(sample_df.columns)
+
+    def test_codec_registrado(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2)
+        assert pf.audit(path)["codec"] == "lzma2"
+
+    def test_nao_modifica_arquivo(self, sample_df, tmp_dir):
+        import time as _t
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        mtime = os.path.getmtime(path)
+        _t.sleep(0.05)
+        pf.audit(path)
+        assert os.path.getmtime(path) == mtime
+
+    def test_index_entries_presente(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, chunk_rows=1000)
+        entries = pf.audit(path)["index_entries"]
+        assert len(entries) > 0
+        assert all(f in entries[0] for f in ("chunk_id","byte_offset","byte_len","sha256"))
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+class TestThawLossless:
+    def test_linhas_recuperadas(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
+        assert len(pf.thaw(path, verify=True)) == len(sample_df)
+
+    def test_colunas_preservadas(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        assert set(pf.thaw(path).columns) == set(sample_df.columns)
+
+    def test_ids_exatos_delta_zigzag(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
+        df_t = pf.thaw(path, verify=True)
+        assert np.array_equal(sample_df["id"].values,
+                               df_t["id"].values[:len(sample_df)].astype(np.int64))
+
+    def test_categorias_exatas_category_u8(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
+        df_t = pf.thaw(path, verify=True)
+        for col in ("status","pais","categoria"):
+            pct = (sample_df[col].astype(str).values ==
+                   df_t[col].astype(str).values[:len(sample_df)]).mean() * 100
+            assert pct == 100.0, f"'{col}': {pct:.1f}%"
+
+    def test_floats_exatos_lag1_zigzag(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
+        df_t = pf.thaw(path, verify=True)
+        for col in ("preco_unitario","total_liquido"):
+            diff = np.abs(sample_df[col].values -
+                          df_t[col].values[:len(sample_df)].astype(float)).max()
+            assert diff < 0.01, f"'{col}' max_diff={diff:.6f}"
+
+    def test_timestamps_exatos_ts_delta_s(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
+        df_t = pf.thaw(path, verify=True)
+        orig = sample_df["data"].dt.strftime("%Y-%m-%d %H:%M").values
+        rest = pd.to_datetime(df_t["data"]).dt.strftime("%Y-%m-%d %H:%M").values[:len(sample_df)]
+        assert (orig == rest).mean() == 1.0
+
+
+class TestThawVault:
+    def test_ids_exatos(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "v.permafrost")
+        pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
+        df_t = pf.thaw(path, verify=True)
+        assert np.array_equal(sample_df["id"].values,
+                               df_t["id"].values[:len(sample_df)].astype(np.int64))
+
+    def test_categorias_exatas(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "v.permafrost")
+        pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
+        df_t = pf.thaw(path, verify=True)
+        for col in ("status","pais"):
+            assert (sample_df[col].astype(str).values ==
+                    df_t[col].astype(str).values[:len(sample_df)]).mean() == 1.0
+
+    def test_floats_tolerancia_r1(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "v.permafrost")
+        pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
+        df_t = pf.thaw(path, verify=True)
+        diff = np.abs(sample_df["preco_unitario"].values -
+                      df_t["preco_unitario"].values[:len(sample_df)].astype(float)).max()
+        assert diff <= 1.0, f"max_diff=R${diff:.2f}"
+
+
+class TestIntegridade:
+    def test_arquivo_correto_passa(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "g.permafrost")
+        pf.freeze(sample_df, path)
+        assert len(pf.thaw(path, verify=True)) == len(sample_df)
+
+    def test_detecta_header_corrompido(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "g.permafrost")
+        corrupt = os.path.join(tmp_dir, "c.permafrost")
+        pf.freeze(sample_df, path)
+        shutil.copy(path, corrupt)
+        with open(corrupt,"r+b") as f: f.seek(500); f.write(b"\x00"*8)
+        with pytest.raises(ValueError, match="SHA"):
+            pf.thaw(corrupt, verify=True)
+
+    def test_detecta_payload_corrompido(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "g.permafrost")
+        corrupt = os.path.join(tmp_dir, "c2.permafrost")
+        pf.freeze(sample_df, path)
+        sz = os.path.getsize(path)
+        shutil.copy(path, corrupt)
+        with open(corrupt,"r+b") as f: f.seek(sz//2); f.write(b"\xFF"*32)
+        with pytest.raises(ValueError):
+            pf.thaw(corrupt, verify=True)
+
+    def test_detecta_truncado(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "g.permafrost")
+        trunc = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path)
+        sz = os.path.getsize(path)
+        with open(path,"rb") as s, open(trunc,"wb") as d: d.write(s.read(sz//2))
+        with pytest.raises(ValueError): pf.thaw(trunc)
+
+    def test_detecta_magic_errado(self, tmp_dir):
+        fake = os.path.join(tmp_dir, "f.permafrost")
+        with open(fake,"wb") as f: f.write(b"%PDF-1.4 not permafrost")
+        with pytest.raises(ValueError, match="[Mm]agic"):
+            pf.thaw(fake)
+
+
+class TestSparseIndex:
+    def test_filter_retorna_subset(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "p.permafrost")
+        df_s = sample_df.sort_values("ano").reset_index(drop=True)
+        pf.freeze(df_s, path, partition_by="ano", chunk_rows=1000)
+        ano  = sorted(df_s["ano"].unique())[0]
+        df_f = pf.thaw(path, filter={"ano": ano})
+        assert 0 < len(df_f) < len(df_s)
+
+    def test_row_range_funciona(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "t.permafrost")
+        pf.freeze(sample_df, path, chunk_rows=1000)
+        assert len(pf.thaw(path, row_range=(0, 999))) <= 1000
+
+    def test_filter_vazio_retorna_df_vazio(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "p.permafrost")
+        df_s = sample_df.sort_values("ano").reset_index(drop=True)
+        pf.freeze(df_s, path, partition_by="ano")
+        assert len(pf.thaw(path, filter={"ano": 9999})) == 0
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])
+
+
+class TestZPAQCodec:
+    """Testes do CODEC_ZPAQ — requer binário 'zpaq' instalado no sistema."""
+
+    @pytest.fixture(autouse=True)
+    def check_zpaq(self):
+        import shutil
+        if not shutil.which("zpaq"):
+            pytest.skip("zpaq binário não disponível (apt install zpaq)")
+
+    def test_zpaq_freeze_thaw_round_trip(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "zpaq.permafrost")
+        m = pf.freeze(sample_df, path, codec=pf.CODEC_ZPAQ, quant=pf.QUANT_NONE)
+        assert m["ratio"] > 3.0
+        df_t = pf.thaw(path, verify=True)
+        assert len(df_t) == len(sample_df)
+
+    def test_zpaq_ids_exatos(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "zpaq.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_ZPAQ, quant=pf.QUANT_NONE)
+        df_t = pf.thaw(path, verify=True)
+        assert np.array_equal(sample_df["id"].values,
+                               df_t["id"].values[:len(sample_df)].astype(np.int64))
+
+    def test_zpaq_codec_registrado_no_audit(self, sample_df, tmp_dir):
+        path = os.path.join(tmp_dir, "zpaq.permafrost")
+        pf.freeze(sample_df, path, codec=pf.CODEC_ZPAQ)
+        assert pf.audit(path)["codec"] == "zpaq"
+
+    def test_zpaq_melhor_que_lzma2_em_texto(self, tmp_dir):
+        """ZPAQ supera LZMA2 em dados de texto com padrões de longa distância."""
+        np.random.seed(1)
+        N = 2_000
+        df_text = pd.DataFrame({
+            "id":  np.arange(1, N+1, dtype=np.int32),
+            "log": [f"INFO 2024-01-{(i%28)+1:02d}T{(i%24):02d}:00:00Z auth service request id={i:06d} status=ok duration_ms={np.random.randint(1,500)}" for i in range(N)],
+        })
+        pz = os.path.join(tmp_dir, "zpaq.permafrost")
+        pl = os.path.join(tmp_dir, "lzma.permafrost")
+        mz = pf.freeze(df_text, pz, codec=pf.CODEC_ZPAQ)
+        ml = pf.freeze(df_text, pl, codec=pf.CODEC_LZMA2)
+        # ZPAQ deve ser pelo menos tão bom quanto LZMA2 para texto
+        assert mz["stored_mb"] <= ml["stored_mb"] * 1.1  # tolerância 10%

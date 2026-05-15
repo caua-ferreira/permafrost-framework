@@ -165,3 +165,76 @@ Dado bruto (CSV 5.85 MB)
 - [Freeze & Thaw](user-guide/freeze-thaw.md) — API core
 - [SQL & NoSQL](user-guide/nosql.md) — JSONL, MongoDB, redes sociais
 - [Cloud Storage](user-guide/cloud.md) — S3, GCS, Azure
+
+---
+
+## Quando o Permafrost faz sentido
+
+### O que o Permafrost entrega que nenhum codec sozinho entrega
+
+Comprimir um CSV com LZMA2 puro é simples — qualquer pessoa faz com uma linha de Python.
+O problema é que você obtém **5.97×** de ratio.
+
+O Permafrost entrega **10.50×** no mesmo dado, com lossless garantido.
+
+A diferença não está no codec — está no que acontece **antes** do codec.
+Os preditores colunares transformam cada coluna pelo seu significado semântico:
+
+```
+Preços: [199.50, 201.00, 198.75, 202.00, ...]
+→ lag1_zigzag → resíduos: [0, +1.50, -2.25, +3.25, ...]
+→ valores pequenos perto de zero → LZMA2 comprime quase perfeitamente
+```
+
+Sem isso, o LZMA2 recebe floats que parecem aleatórios.
+Com isso, recebe deltas pequenos e previsíveis.
+
+**Isso nenhum compressor genérico faz.** `lzma.compress(df.to_csv())` entrega 5.97×.
+O Permafrost entrega 10.50× no mesmo dado, com sparse index, SHA-256 e catalog.
+
+---
+
+### Os três diferenciais reais
+
+**1. Sparse Index — leitura seletiva sem full-restore**
+
+Com um arquivo `.tar.gz` ou `.zst` contendo 10 anos de dados, você é obrigado a
+descomprimir tudo para acessar 2021. Com o Permafrost:
+
+```python
+df_2021 = pf.thaw("historico.permafrost", filter={"ano": 2021})
+# Lê apenas 12–31% do arquivo — os outros anos nem são tocados
+```
+
+**2. Catalog — descoberta sem baixar**
+
+Com 500 arquivos `.permafrost` no S3, você consulta o catalog local (DuckDB)
+e sabe exatamente qual arquivo baixar — por schema, período, codec, custo —
+antes de fazer um único request de rede.
+
+**3. Integridade embutida — SHA-256 antes de descomprimir**
+
+Você descobre bit-rot em 2031 **antes** de gastar CPU descomprimindo 2 GB de arquivo
+corrompido. A verificação falha em milissegundos, não em minutos.
+
+---
+
+### Quando **não** usar o Permafrost
+
+| Situação | Por quê não | Alternativa |
+|----------|-------------|-------------|
+| Imagens, vídeos, PDFs | Entropia já máxima — sem ganho possível | Armazenar direto |
+| Dados < 1 MB | Overhead do formato não compensa | `gzip` |
+| Pipeline já madura com Parquet+Snappy+S3 | Custo de migração sem ganho proporcional | Manter o que tem |
+| Dados que mudam frequentemente | Permafrost é para cold data — imutável | Parquet no data lake |
+| Texto livre de alta variedade | ZPAQ ajuda, mas gain é menor | Avaliar caso a caso |
+
+---
+
+### Resumo
+
+O Permafrost resolve um problema específico: **dados corporativos históricos que precisam
+existir por anos, ser consultáveis sem full-restore, e ter integridade garantida ao longo do tempo.**
+
+Para esse caso, ele entrega algo que não existe pronto no ecossistema Python.
+Para guardar um CSV e nunca mais abrir — `gzip` resolve com menos trabalho.

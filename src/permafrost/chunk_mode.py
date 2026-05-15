@@ -7,7 +7,7 @@ from permafrost.codec import (
     _parse_chunk, _read_header, _read_sparse_index,
     _sha256, _pa_schema,
     MAGIC, EOF_MAGIC, VERSION,
-    CODEC_LZMA2, CODEC_ZSTD, QUANT_NONE, QUANT_MEDIUM,
+    CODEC_LZMA2, CODEC_ZSTD, CODEC_ZPAQ, QUANT_NONE, QUANT_MEDIUM,
     FLAG_DELTA, FLAG_QUANTIZE, FLAG_CHUNKED, FLAG_PREDICTOR, FLAG_INDEX,
     decode_column,
 )
@@ -136,7 +136,7 @@ def freeze_stream(iterator, path, schema_sample=None, codec=CODEC_LZMA2,
         'ratio':round(orig_bytes_est/stored,3) if stored else 1,
         'reduction_pct':round((1-stored/orig_bytes_est)*100,2) if orig_bytes_est else 0,
         'freeze_s':round(elapsed,3),
-        'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd'}.get(codec,'?'),
+        'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(codec,'?'),
         'partition_by':partition_by,'index_entries':len(index_entries),'mode':'streaming',
     }
 
@@ -195,24 +195,31 @@ def thaw_iter(path, verify=True, filter=None, batch_size=None):
         col_f,val_f=next(iter(filter.items())); val_str=str(val_f)
         sel=[e for e in index if e['part_col']==col_f and val_str in e['part_key']]
         if sel: selected=sel
-    buf_df=[]; buf_rows=0
+    buf_df = []; buf_rows = 0
     for entry in selected:
-        offset=entry['byte_offset']; blk_len=entry['byte_len']
-        blob=raw[offset:offset+blk_len]; sha=raw[offset+blk_len:offset+blk_len+32]
-        if verify and _sha256(blob).hex()!=entry['sha256']:
+        offset  = entry['byte_offset']; blk_len = entry['byte_len']
+        blob    = raw[offset: offset + blk_len]
+        sha     = raw[offset + blk_len: offset + blk_len + 32]
+        if verify and _sha256(blob).hex() != entry['sha256']:
             raise ValueError(f"Chunk {entry['chunk_id']} corrompido")
-        chunk_raw=_decompress(blob,codec)
-        n_rows=entry['row_end']-entry['row_start']+1
-        df_c=_parse_chunk(chunk_raw,manifests,n_rows)
+        chunk_raw = _decompress(blob, codec)
+        n_rows    = entry['row_end'] - entry['row_start'] + 1
+        df_c      = _parse_chunk(chunk_raw, manifests, n_rows)
+
         if batch_size is None:
             yield df_c
         else:
-            buf_df.append(df_c); buf_rows+=len(df_c)
-            if buf_rows>=batch_size:
-                result=pd.concat(buf_df,ignore_index=True)
-                yield result.iloc[:batch_size]
-                remaining=result.iloc[batch_size:].copy()
-                buf_df=[remaining] if len(remaining) else []; buf_rows=len(remaining)
-    if buf_df: yield pd.concat(buf_df,ignore_index=True)
+            buf_df.append(df_c); buf_rows += len(df_c)
+            # Enquanto tiver batch_size linhas no buffer → emitir
+            while buf_rows >= batch_size:
+                combined = pd.concat(buf_df, ignore_index=True)
+                yield combined.iloc[:batch_size].copy()
+                remainder = combined.iloc[batch_size:].copy()
+                buf_df    = [remainder] if len(remainder) > 0 else []
+                buf_rows  = len(remainder)
+
+    # Emitir o que sobrou no buffer (< batch_size linhas)
+    if buf_df:
+        yield pd.concat(buf_df, ignore_index=True)
 
 print("permafrost_chunk_mode.py v2 OK — two-pass correto sem placeholder")

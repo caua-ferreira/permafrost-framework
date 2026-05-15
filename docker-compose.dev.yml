@@ -1,0 +1,17 @@
+# Sobrescreve docker-compose.yml para usar build local:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --scale worker=2
+
+version: "3.9"
+
+services:
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile.master
+    image: permafrost-master:dev
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: permafrost-worker:dev

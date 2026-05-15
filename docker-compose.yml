@@ -1,34 +1,47 @@
-# Docker Compose — cluster local do Permafrost
-# Uso:
-#   docker-compose up --scale worker=3
+# ── Permafrost Cluster — Docker Compose ──────────────────────────────────────
+# Imagens do Docker Hub (sem build local necessário):
+#   docker-compose up --scale worker=4
 #   docker-compose down
+#
+# Submeter jobs via Python:
+#   client = pf.PermafrostClient("http://localhost:8700")
+#   job_id = client.freeze("/data/vendas.csv", "/data/vendas.permafrost")
+#   print(client.wait(job_id))
 
 version: "3.9"
 
 services:
+
   master:
-    build: .
-    command: python -m permafrost_cluster master
+    image: SEU_USUARIO/permafrost-master:latest
+    container_name: permafrost-master
     ports:
       - "8700:8700"
     environment:
-      - PERMAFROST_MASTER_HOST=0.0.0.0
-      - PERMAFROST_MASTER_PORT=8700
+      PERMAFROST_MASTER_HOST:   "0.0.0.0"
+      PERMAFROST_MASTER_PORT:   "8700"
+      PERMAFROST_MAX_RETRIES:   "3"
+      PERMAFROST_DEFAULT_CHUNK: "50000"
     volumes:
-      - ./data:/data
+      - permafrost_data:/data
+    networks:
+      - permafrost_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8700/health"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   worker:
-    build: .
-    command: python -m permafrost_cluster worker --master=http://master:8700
+    image: SEU_USUARIO/permafrost-worker:latest
     environment:
-      - PERMAFROST_MASTER_URL=http://master:8700
+      PERMAFROST_MASTER_URL: "http://master:8700"
     volumes:
-      - ./data:/data
+      - permafrost_data:/data
+    networks:
+      - permafrost_net
     depends_on:
       master:
         condition: service_healthy
@@ -36,5 +49,14 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: "2"
+          cpus: "2.0"
           memory: 2G
+    restart: unless-stopped
+
+volumes:
+  permafrost_data:
+    driver: local
+
+networks:
+  permafrost_net:
+    driver: bridge

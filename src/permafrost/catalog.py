@@ -71,11 +71,39 @@ CREATE SEQUENCE IF NOT EXISTS chunk_seq   START 1;
 """
 
 class PermafrostCatalog:
+    """Índice centralizado de arquivos `.permafrost` usando DuckDB embedded.
 
-    def __init__(self, catalog_path: str = '.permafrost_catalog.db'):
-        """
-        Abre (ou cria) o catalog DuckDB no caminho especificado.
-        Usa ':memory:' para testes.
+    Registra metadados de arquivos ``.permafrost`` lendo apenas o header e o
+    sparse index (zero decompressão). Permite busca por schema, período, codec,
+    estimativa de custo e verificação de integridade.
+
+    O banco DuckDB tem duas tabelas:
+
+    - ``datasets`` — um registro por arquivo, espelha o header do ``.permafrost``
+    - ``chunks`` — um registro por chunk, espelha o sparse index (habilita seeks diretos)
+
+    Example:
+        >>> import permafrost as pf
+        >>> cat = pf.PermafrostCatalog(".permafrost_catalog.db")
+        >>> cat.register_dir("/dados/cold/", tags=["producao"])
+        >>> cat.search(partition_key="2023", lossless_only=True)
+        >>> cat.cost_report("glacier_deep")
+        >>> cat.integrity_check()
+    """
+
+    def __init__(self, catalog_path: str = ".permafrost_catalog.db"):
+        """Abre (ou cria) o catálogo DuckDB no caminho especificado.
+
+        O catálogo indexa arquivos ``.permafrost`` lendo apenas o header e o
+        sparse index — zero decompressão. Todas as consultas são SQL DuckDB.
+
+        Args:
+            catalog_path: Caminho do arquivo DuckDB. Use ``":memory:"`` para
+                testes (dados não persistidos). Padrão: ``".permafrost_catalog.db"``.
+
+        Example:
+            >>> cat = PermafrostCatalog(".permafrost_catalog.db")
+            >>> cat = PermafrostCatalog(":memory:")  # testes
         """
         self.catalog_path = catalog_path
         self.con = duckdb.connect(catalog_path)
@@ -358,7 +386,26 @@ class PermafrostCatalog:
 
     # ── STATS ─────────────────────────────────────────────────────────────────
     def stats(self) -> dict:
-        """Métricas gerais do catalog."""
+        """Retorna métricas agregadas de todos os datasets registrados.
+
+        Returns:
+            Dicionário com::
+
+                {
+                    "total_datasets":      4,
+                    "total_rows":          540000,
+                    "total_mb":            2.964,
+                    "total_chunks":        54,
+                    "avg_mb_per_1k_rows":  0.0055,
+                    "distinct_codecs":     2,
+                    "lossless_count":      3,
+                    "vault_count":         1,
+                }
+
+        Example:
+            >>> s = cat.stats()
+            >>> print(f"{s['total_datasets']} datasets, {s['total_rows']:,} linhas")
+        """
         r = self.con.execute("""
             SELECT
                 COUNT(*)                          as total_datasets,

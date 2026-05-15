@@ -136,3 +136,57 @@ python benchmarks/01_compression_algorithms.py
 python benchmarks/02_multilayer_experiment.py
 python benchmarks/03_10gb_projection.py
 ```
+
+---
+
+## Contexto: por que o Permafrost supera LZMA2 puro?
+
+A pergunta natural ao ver os benchmarks: **se o LZMA2 já existe, por que o Permafrost é melhor?**
+
+### LZMA2 puro vs Permafrost — mesmo dado, mesmo codec
+
+| Abordagem | Tamanho | Ratio |
+|---|---|---|
+| `lzma.compress(df.to_csv())` | 0.499 MB | **5.97×** |
+| `pf.freeze(df, codec=CODEC_LZMA2)` | 0.284 MB | **10.50×** |
+
+**A diferença é 76% de compressão adicional — sem trocar o algoritmo.**
+
+O ganho vem dos preditores colunares que operam **antes** do codec:
+
+```
+Coluna "total" (floats): [199.50, 201.00, 198.75, 202.00, ...]
+
+Abordagem ingênua → LZMA2 vê bytes de float64 (parecem aleatórios)
+Permafrost →
+  1. lag1_zigzag: calcula resíduos vs valor anterior
+     → [0, +1.50, -2.25, +3.25, ...]   (valores pequenos!)
+  2. multiplica por 100 → inteiros: [0, 150, -225, 325, ...]
+  3. zigzag encode → uint32 sem sinal
+  4. LZMA2 recebe inteiros pequenos → comprime muito melhor
+```
+
+Para uma coluna de status categórico ("Ativo", "Cancelado", "Pendente"):
+- Sem Permafrost: LZMA2 vê strings repetidas de 6–9 bytes cada
+- Com Permafrost: `category_u8` converte para índice 0, 1 ou 2 — **1 byte por linha**
+
+### Quando o ZPAQ supera o LZMA2
+
+O ZPAQ usa **context mixing** — 8+ modelos estatísticos simultâneos que aprendem
+a probabilidade do próximo byte com base em padrões de longa distância.
+
+Para logs de texto como `"INFO 2024-01-15T10:30:00Z auth service request id=000042"`,
+a frase `"auth service request"` repete 5.000 vezes mas separada por muitos bytes.
+O LZMA2 (janela de busca) perde esse padrão. O ZPAQ aprende e comprime 44% mais.
+
+**Para dados tabulares**, os preditores colunares já eliminaram os padrões de longa
+distância antes do codec. ZPAQ e LZMA2 empatan (diferença < 2%).
+
+### Conclusão prática
+
+| Tipo de dado | Codec ideal | Motivo |
+|---|---|---|
+| Dados corporativos tabulares | `CODEC_LZMA2` | Preditores já fizeram o trabalho |
+| Logs de aplicação / texto longo | `CODEC_ZPAQ` | Context mixing ganha em padrões longos |
+| Compliance — nunca será lido | `CODEC_ZPAQ` | Melhor ratio absoluto |
+| Acesso frequente (warm storage) | `CODEC_ZSTD` | Decompressão 6× mais rápida |

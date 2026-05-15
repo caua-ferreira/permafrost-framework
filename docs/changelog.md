@@ -65,3 +65,35 @@
 - Bit-rot detection em header e payload (antes de qualquer decompressão)
 - Benchmarks completos: 80k linhas × 9 colunas, projeção para 10 GB
 - Estudo completo de algoritmos (Zstd, LZMA2, Brotli, ZPAQ, Parquet)
+
+## [0.5.1] — 2026-05
+
+### Adicionado
+- **CODEC_ZPAQ** (`CODEC_ZPAQ = 0x03`) — codec de context mixing via binário `zpaq`
+  - Para dados de texto longo e logs: até 27% menor que LZMA2
+  - Para dados tabulares: equivalente ao LZMA2 (diferença < 2%)
+  - Requer: `apt install zpaq` | `brew install zpaq`
+  - API: `pf.freeze(df, path, codec=pf.CODEC_ZPAQ)`
+- Docstrings Google-style em todas as funções públicas (API Reference automática via mkdocstrings)
+- Type hints completos em `freeze()`, `thaw()`, `audit()`
+- 3 exemplos práticos em `examples/` (quick start, NoSQL, streaming)
+- Testes reescritos com `import permafrost as pf` (PyPI-ready)
+
+### Corrigido
+- Mapa de nomes de codec em `audit()` agora inclui `zpaq`
+
+## [0.5.2] — 2026-05
+
+### Adicionado
+- **Docker Hub**: imagens `permafrost-master` e `permafrost-worker` publicadas
+  - `docker-compose up --scale worker=4` — cluster pronto sem build local
+  - Multi-arch: `linux/amd64` + `linux/arm64` (Apple M1/M2)
+  - `Dockerfile.master` e `Dockerfile.worker` separados
+  - `docker-compose.dev.yml` para desenvolvimento com build local
+- **`python -m permafrost`** — entrypoint CLI para containers
+  - `python -m permafrost master [--host] [--port]`
+  - `python -m permafrost worker --master URL [--host] [--port]`
+- **GitHub Actions `docker.yml`** — build e push automático ao criar tag `v*`
+  - Secrets necessários: `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`
+- Exemplo `04_cluster_docker.py` — demonstra cluster com 3 jobs paralelos
+- Seção "Quando o Permafrost faz sentido" na documentação principal

@@ -1,0 +1,55 @@
+# ── Permafrost Master Node ────────────────────────────────────────────────────
+# Imagem do nó coordenador do cluster Permafrost.
+# Publicada em: docker.io/SEU_USUARIO/permafrost-master
+#
+# Uso:
+#   docker run -p 8700:8700 SEU_USUARIO/permafrost-master
+#   docker run -p 8700:8700 -e PERMAFROST_MAX_RETRIES=5 SEU_USUARIO/permafrost-master
+
+FROM python:3.11-slim
+
+LABEL maintainer="Permafrost Contributors"
+LABEL description="Permafrost Cluster Master — job coordinator"
+LABEL version="0.5.1"
+
+# Dependências do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instalar dependências Python (camada separada para cache do Docker)
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    fastapi>=0.100.0 \
+    uvicorn>=0.23.0 \
+    httpx>=0.24.0 \
+    numpy>=1.24.0 \
+    pandas>=2.0.0 \
+    pyarrow>=12.0.0 \
+    zstandard>=0.21.0
+
+# Instalar o pacote
+COPY src/ ./src/
+RUN pip install --no-cache-dir -e ./src/ 2>/dev/null || true
+ENV PYTHONPATH=/app/src
+
+# Configuração via variáveis de ambiente
+ENV PERMAFROST_MASTER_HOST=0.0.0.0
+ENV PERMAFROST_MASTER_PORT=8700
+ENV PERMAFROST_MAX_RETRIES=3
+ENV PERMAFROST_HEARTBEAT_S=10
+ENV PERMAFROST_DEFAULT_CHUNK=50000
+
+# Volume para dados compartilhados entre host e container
+VOLUME ["/data"]
+
+EXPOSE 8700
+
+# Healthcheck
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:${PERMAFROST_MASTER_PORT}/health || exit 1
+
+ENTRYPOINT ["python", "-m", "permafrost", "master"]
+CMD ["--host", "0.0.0.0", "--port", "8700"]

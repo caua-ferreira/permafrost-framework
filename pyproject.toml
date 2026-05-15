@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "permafrost-framework"
-version = "0.5.0"
+version = "0.6.0"
 description = "Distributed intelligent compression for long-term data archival"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -32,7 +32,8 @@ s3        = ["boto3>=1.26.0"]
 gcs       = ["google-cloud-storage>=2.10.0"]
 azure     = ["azure-storage-blob>=12.17.0"]
 all-cloud = ["boto3>=1.26.0","google-cloud-storage>=2.10.0","azure-storage-blob>=12.17.0"]
-dev       = ["pytest>=7.0","pytest-cov","build","twine"]
+spark     = ["pyspark>=4.0"]
+dev       = ["pytest>=7.0","pytest-cov","build","twine","pyspark>=4.0"]
 
 [project.urls]
 Homepage  = "https://github.com/SEU_USUARIO/permafrost-framework"

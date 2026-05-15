@@ -166,3 +166,72 @@ worker = pf.PermafrostWorker(
 )
 worker.register()
 ```
+
+---
+
+## Docker Hub — imagens prontas
+
+As imagens oficiais estão publicadas no Docker Hub e funcionam sem build local.
+
+### Iniciar o cluster (1 comando)
+
+```bash
+docker-compose up --scale worker=4 -d
+```
+
+Isso sobe:
+- 1 Master em `http://localhost:8700`
+- 4 Workers conectados automaticamente ao Master
+
+### Imagens disponíveis
+
+| Imagem | Tag | Descrição |
+|--------|-----|-----------|
+| `SEU_USUARIO/permafrost-master` | `latest` | Nó coordenador |
+| `SEU_USUARIO/permafrost-master` | `0.5.1` | Versão específica |
+| `SEU_USUARIO/permafrost-worker` | `latest` | Nó de processamento (inclui `zpaq`) |
+| `SEU_USUARIO/permafrost-worker` | `0.5.1` | Versão específica |
+
+Ambas disponíveis para `linux/amd64` e `linux/arm64` (Apple M1/M2).
+
+### Desenvolvimento local (build da imagem)
+
+```bash
+# Build local sem Docker Hub
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --scale worker=2
+```
+
+### Variáveis de ambiente
+
+**Master:**
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `PERMAFROST_MASTER_HOST` | `0.0.0.0` | Interface de escuta |
+| `PERMAFROST_MASTER_PORT` | `8700` | Porta da API REST |
+| `PERMAFROST_MAX_RETRIES` | `3` | Tentativas por task |
+| `PERMAFROST_DEFAULT_CHUNK` | `50000` | Linhas padrão por task |
+
+**Worker:**
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `PERMAFROST_MASTER_URL` | `http://master:8700` | URL do Master |
+| `PERMAFROST_WORKER_HOST` | `0.0.0.0` | Interface de escuta |
+| `PERMAFROST_WORKER_PORT` | `8801` | Porta do worker |
+
+### Publicar suas próprias imagens
+
+Se você fizer fork do projeto, as imagens são publicadas automaticamente
+ao criar uma tag no GitHub (via `.github/workflows/docker.yml`):
+
+```bash
+git tag v0.5.2 && git push --tags
+# → GitHub Actions: build + push para Docker Hub
+# → docker.io/SEU_USUARIO/permafrost-master:0.5.2
+# → docker.io/SEU_USUARIO/permafrost-worker:0.5.2
+```
+
+Configure os secrets no GitHub:
+- `DOCKERHUB_USERNAME` — seu usuário Docker Hub
+- `DOCKERHUB_TOKEN` — token de acesso (não a senha)

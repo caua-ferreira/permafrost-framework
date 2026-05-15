@@ -27,7 +27,7 @@ Links:
     Docs:   https://github.com/SEU_USUARIO/permafrost-framework/tree/main/docs
 """
 
-__version__  = "0.5.0"
+__version__  = "0.6.0"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 
@@ -106,3 +106,9 @@ __all__ = [
     # Cluster
     "PermafrostMaster", "PermafrostWorker", "PermafrostClient",
 ]
+# ── Spark DataSource API v2 ───────────────────────────────────────────────────
+try:
+    from permafrost.spark import PermafrostDataSource, register as spark_register
+    __all__ += ["PermafrostDataSource", "spark_register"]
+except ImportError:
+    pass   # PySpark não instalado — ok
