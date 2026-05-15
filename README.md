@@ -2,12 +2,19 @@
 
 <div align="center">
 
-[![PyPI version](https://badge.fury.io/py/permafrost-framework.svg)](https://pypi.org/project/permafrost-framework/)
-[![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github&cacheSeconds=1)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
+[![PyPI version](https://img.shields.io/pypi/v/permafrost-framework?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/permafrost-framework/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/permafrost-framework?color=blue)](https://pypi.org/project/permafrost-framework/)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/permafrost-framework/)
+[![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/caua-ferreira/permafrost-framework?logo=codecov)](https://codecov.io/gh/caua-ferreira/permafrost-framework)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caua-ferreira/permafrost-framework/badge)](https://securityscorecards.dev/viewer/?uri=github.com/caua-ferreira/permafrost-framework)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/caua-ferreira/permafrost-framework/blob/main/LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://pypi.org/project/permafrost-framework/)
 [![Docs](https://img.shields.io/badge/docs-mkdocs-00D4FF)](https://caua-ferreira.github.io/permafrost-framework)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/permafrost-framework)](https://pypi.org/project/permafrost-framework/)
+
+[![GitHub Stars](https://img.shields.io/github/stars/caua-ferreira/permafrost-framework?style=social)](https://github.com/caua-ferreira/permafrost-framework/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/caua-ferreira/permafrost-framework?style=social)](https://github.com/caua-ferreira/permafrost-framework/network/members)
+[![Open Issues](https://img.shields.io/github/issues/caua-ferreira/permafrost-framework)](https://github.com/caua-ferreira/permafrost-framework/issues)
+[![Open PRs](https://img.shields.io/github/issues-pr/caua-ferreira/permafrost-framework)](https://github.com/caua-ferreira/permafrost-framework/pulls)
 
 **Plataforma distribuída de compressão inteligente para arquivamento digital de longo prazo.**
 

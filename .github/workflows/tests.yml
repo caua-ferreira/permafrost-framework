@@ -25,3 +25,12 @@ jobs:
       - name: Coverage (3.11 only)
         if: matrix.python-version == '3.11'
         run: pytest tests/ -k "not Spark" --cov=src/permafrost --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: false
