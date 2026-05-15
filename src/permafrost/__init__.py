@@ -53,6 +53,7 @@ from permafrost.codec import (
     PRED_RAW,
     PRED_FLOAT32,
     PRED_FLOAT16,
+    PRED_JSON_V2,
     # Format constants
     MAGIC,
     EOF_MAGIC,
@@ -132,7 +133,7 @@ __all__ = [
     "QUANT_NONE", "QUANT_HIGH", "QUANT_MEDIUM", "QUANT_LOW",
     # Predictors
     "PRED_DELTA", "PRED_LAG1", "PRED_CATEGORY", "PRED_TS", "PRED_RAW",
-    "PRED_FLOAT32", "PRED_FLOAT16",
+    "PRED_FLOAT32", "PRED_FLOAT16", "PRED_JSON_V2",
     # Schema
     "SchemaDetector", "DataType", "FieldKind",
     # Chunk mode

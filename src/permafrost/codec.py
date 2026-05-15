@@ -19,10 +19,47 @@ DEFAULT_CHUNK_ROWS = 10_000
 PRED_DELTA='delta_zigzag'; PRED_LAG1='lag1_zigzag'
 PRED_CATEGORY='category_u8'; PRED_TS='ts_delta_s'; PRED_RAW='raw_text'
 PRED_FLOAT32='float32_quantized'; PRED_FLOAT16='float16_quantized'
+PRED_JSON_V2='json_schema_v2'
 
 def _sha256(b): return hashlib.sha256(b).digest()
 def _zigzag_enc(a): return np.where(a>=0,a*2,-a*2-1).astype(np.uint64)
 def _zigzag_dec(a): return np.where(a%2==0,a//2,-(a.astype(np.int64)//2)-1).astype(np.int64)
+
+def _is_json_column(series, threshold: float = 0.70, sample_size: int = 100) -> bool:
+    """Returns True if >= threshold of non-null values parse as JSON dicts."""
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return False
+    sample = non_null.iloc[:sample_size]
+    ok = sum(1 for v in sample if _try_json_dict(v))
+    return ok / len(sample) >= threshold
+
+
+def _try_json_dict(v) -> bool:
+    try:
+        return isinstance(json.loads(str(v)), dict)
+    except Exception:
+        return False
+
+
+def _json_v2_manifest(name, series) -> dict:
+    """Builds manifest for json_schema_v2 — shared key dict for integer encoding."""
+    keys: set = set()
+    for v in series.dropna():
+        try:
+            d = json.loads(str(v))
+            if isinstance(d, dict):
+                keys.update(d.keys())
+        except Exception:
+            pass
+    return {
+        'name': name,
+        'dtype': str(series.dtype),
+        'predictor': PRED_JSON_V2,
+        'scale': 1,
+        'key_dict': sorted(keys),
+    }
+
 
 def _float_quant_manifest(name, series, pred):
     """Builds a manifest for float32/float16 quantized predictors."""
@@ -69,6 +106,9 @@ def _detect_predictor(name, series, quant):
         m['predictor']=PRED_DELTA; return m
     # String/object: decidir category vs raw baseado no DataFrame COMPLETO
     # (não no chunk!) — essa decisão é tomada uma vez e fixada
+    _is_text = pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series)
+    if _is_text and _is_json_column(series):
+        return _json_v2_manifest(name, series)
     if series.nunique() <= 256:
         cats=series.astype('category')
         m['categories']=list(cats.cat.categories.astype(str))
@@ -123,6 +163,22 @@ def _encode_with_manifest(series, manifest, quant):
     if pred == PRED_RAW:
         return '\x00'.join(series.astype(str).values).encode('utf-8')
 
+    if pred == PRED_JSON_V2:
+        key_dict = manifest.get('key_dict', [])
+        rev_map = {k: str(i) for i, k in enumerate(key_dict)}
+        rows = []
+        for v in series:
+            try:
+                d = json.loads(str(v))
+                if isinstance(d, dict):
+                    compact = {rev_map.get(k, k): val for k, val in d.items()}
+                    rows.append(json.dumps(compact, separators=(',', ':')))
+                else:
+                    rows.append(str(v))
+            except Exception:
+                rows.append(str(v))
+        return '\x00'.join(rows).encode('utf-8')
+
     if pred == PRED_FLOAT32:
         return pd.to_numeric(series, errors='coerce').fillna(0).to_numpy(
             dtype=np.float64).astype(np.float32).tobytes()
@@ -153,6 +209,27 @@ def decode_column(data, manifest, n_rows):
         return pd.Series(pd.Categorical.from_codes(codes,categories=cats),name=name)
     if pred==PRED_RAW:
         return pd.Series(data.decode('utf-8').split('\x00'),name=name)
+    if pred==PRED_JSON_V2:
+        key_dict = manifest.get('key_dict', [])
+        rows = data.decode('utf-8').split('\x00')
+        result = []
+        for v in rows:
+            try:
+                d = json.loads(v)
+                if isinstance(d, dict):
+                    restored = {}
+                    for k, val in d.items():
+                        if k.isdigit():
+                            idx = int(k)
+                            restored[key_dict[idx] if idx < len(key_dict) else k] = val
+                        else:
+                            restored[k] = val
+                    result.append(json.dumps(restored))
+                else:
+                    result.append(v)
+            except Exception:
+                result.append(v)
+        return pd.Series(result, name=name)
     if pred==PRED_FLOAT32:
         return pd.Series(np.frombuffer(data,dtype=np.float32).astype(np.float64),name=name)
     if pred==PRED_FLOAT16:
