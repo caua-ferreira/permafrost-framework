@@ -23,7 +23,7 @@ Verifique a instalação:
 
 ```python
 import permafrost as pf
-print(pf.__version__)   # 0.8.0
+print(pf.__version__)   # 1.0.1
 ```
 
 ---
