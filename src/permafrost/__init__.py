@@ -35,6 +35,7 @@ __license__  = "Apache-2.0"
 # ── Core codec ────────────────────────────────────────────────────────────────
 from permafrost.codec import (
     freeze,
+    freeze_append,
     thaw,
     audit,
     # Codec IDs

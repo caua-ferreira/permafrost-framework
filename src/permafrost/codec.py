@@ -373,6 +373,30 @@ def _parse_chunk(data,manifests,n_rows):
     return pd.DataFrame(series)
 
 # ── FREEZE (v4) ───────────────────────────────────────────────────────────────
+def _find_orig_rows_offset(raw: bytes) -> int:
+    """Returns the byte offset of ORIG_ROWS field inside the raw header bytes."""
+    schema_len   = struct.unpack_from('>I', raw, 16)[0]
+    manifest_len = struct.unpack_from('>I', raw, 20 + schema_len)[0]
+    comment_len  = struct.unpack_from('>B', raw, 24 + schema_len + manifest_len)[0]
+    # layout after comment: FREEZE_TS (8B) + RETENTION (4B) + ORIG_ROWS (8B)
+    return 25 + schema_len + manifest_len + comment_len + 8 + 4
+
+
+def _chunk_overlaps_range(part_key: str, lo: str, hi: str) -> bool:
+    """Returns True if the chunk's partition range overlaps [lo, hi]."""
+    # part_key is either a single value ("2022") or "min-max" from freeze()
+    # Use simple lexicographic comparison — works correctly for years, months, dates
+    try:
+        dash = part_key.find('-', 1)  # skip leading minus for negative numbers
+        if dash == -1:
+            chunk_min = chunk_max = part_key
+        else:
+            chunk_min, chunk_max = part_key[:dash], part_key[dash+1:]
+        return chunk_max >= lo and chunk_min <= hi
+    except Exception:
+        return True  # include on error — no data loss
+
+
 def freeze(
     df: pd.DataFrame,
     path: str | os.PathLike,
@@ -438,6 +462,10 @@ def freeze(
         >>> print(f"Ratio: {m['ratio']:.2f}x")
         Ratio: 8.37x
     """
+    # ── Polars support ───────────────────────────────────────────────────────────
+    if type(df).__module__.startswith('polars'):
+        df = df.to_pandas()
+
     _auto_reason: Optional[str] = None
     if codec == "auto":
         from permafrost.auto_codec import auto_select as _auto_select
@@ -587,7 +615,8 @@ def thaw(
     row_range: Optional[tuple] = None,
     key=None,
     schema_override=None,
-) -> pd.DataFrame:
+    engine: str = 'pandas',
+) -> 'pd.DataFrame | Any':
     """Descomprime um arquivo .permafrost de volta para DataFrame.
 
     Args:
@@ -634,8 +663,14 @@ def thaw(
 
     selected=index_entries
     if filter:
-        col_f,val_f=next(iter(filter.items())); val_str=str(val_f)
-        sel=[e for e in index_entries if e['part_col']==col_f and val_str in e['part_key']]
+        col_f,val_f=next(iter(filter.items()))
+        if isinstance(val_f, (list, tuple)) and len(val_f)==2:
+            lo,hi=str(val_f[0]),str(val_f[1])
+            sel=[e for e in index_entries if e['part_col']==col_f
+                 and _chunk_overlaps_range(e['part_key'],lo,hi)]
+        else:
+            val_str=str(val_f)
+            sel=[e for e in index_entries if e['part_col']==col_f and val_str in e['part_key']]
         if sel: selected=sel
     if row_range:
         sr,er=row_range
@@ -659,11 +694,160 @@ def thaw(
     if filter and len(result):
         col_f,val_f=next(iter(filter.items()))
         if col_f in result.columns:
-            result=result[result[col_f].astype(str)==str(val_f)].reset_index(drop=True)
+            if isinstance(val_f,(list,tuple)) and len(val_f)==2:
+                lo,hi=val_f
+                result=result[(result[col_f]>=lo)&(result[col_f]<=hi)].reset_index(drop=True)
+            else:
+                result=result[result[col_f].astype(str)==str(val_f)].reset_index(drop=True)
     if schema_override is not None:
         from permafrost.schema_evolution import apply_schema_evolution
         result = apply_schema_evolution(result, schema_override)
+    if engine == 'polars':
+        import polars as pl
+        return pl.from_pandas(result)
     return result
+
+# ── FREEZE APPEND ─────────────────────────────────────────────────────────────
+def freeze_append(
+    path: str | os.PathLike,
+    df_new: pd.DataFrame,
+    verify: bool = True,
+) -> dict[str, Any]:
+    """Appends new rows to an existing .permafrost file without re-freezing.
+
+    Uses the same codec, predictors and chunk size as the original freeze.
+    The sparse index is rebuilt; the file is written atomically via a temp file.
+
+    Args:
+        path: Existing .permafrost file to append to.
+        df_new: DataFrame with the same columns as the original file.
+        verify: Verify SHA-256 of existing chunks before appending (default True).
+
+    Returns:
+        ``{"appended_rows": N, "total_rows": M, "total_chunks": K, "append_s": T}``
+
+    Raises:
+        ValueError: If schemas are incompatible or the file is encrypted.
+
+    Example:
+        >>> pf.freeze(df_jan, "log.permafrost", codec=pf.CODEC_ZSTD, partition_by="mes")
+        >>> pf.freeze_append("log.permafrost", df_feb)
+        >>> pf.thaw("log.permafrost", filter={"mes": 2})  # works across both batches
+    """
+    t0 = time.time()
+
+    if type(df_new).__module__.startswith('polars'):
+        df_new = df_new.to_pandas()
+
+    with open(path, 'rb') as f:
+        raw = f.read()
+
+    h = _read_header(raw)
+
+    if h['encrypted']:
+        raise ValueError("freeze_append does not support encrypted files yet.")
+
+    index_entries = _read_sparse_index(raw)
+
+    # Validate column compatibility
+    existing_cols = set(h['manifests'].keys())
+    new_cols = set(df_new.columns)
+    if existing_cols != new_cols:
+        raise ValueError(
+            f"Schema mismatch — existing: {sorted(existing_cols)}, "
+            f"new: {sorted(new_cols)}"
+        )
+
+    manifests  = h['manifests']
+    codec      = h['codec']
+    quant      = h['quant']
+    chunk_rows = h['chunk_rows']
+    orig_rows  = h['orig_rows']
+    partition_col = index_entries[0]['part_col'] if index_entries else '__rows__'
+
+    # Find where chunks section ends (= start of sparse index JSON)
+    idx_len = struct.unpack('>I', raw[-4-32-4:-4-32])[0]
+    chunks_end = len(raw) - 4 - 32 - 4 - idx_len
+    existing_chunks_bytes = raw[h['payload_start']:chunks_end]
+
+    if verify:
+        for entry in index_entries:
+            offset, blk_len = entry['byte_offset'], entry['byte_len']
+            blob = raw[offset:offset+blk_len]
+            if _sha256(blob).hex() != entry['sha256']:
+                raise ValueError(f"Chunk {entry['chunk_id']} corrupted — aborting append")
+
+    # Encode new chunks with existing manifests (same predictors/codec)
+    new_chunk_blobs: list = []
+    new_index_entries: list = []
+
+    for chunk_start in range(0, len(df_new), chunk_rows):
+        chunk_end   = min(chunk_start + chunk_rows, len(df_new))
+        df_chunk    = df_new.iloc[chunk_start:chunk_end].reset_index(drop=True)
+        raw_chunk   = _encode_chunk(df_chunk, manifests, quant)
+        compressed  = _compress(raw_chunk, codec)
+        sha         = _sha256(compressed)
+
+        if partition_col != '__rows__' and partition_col in df_chunk.columns:
+            pv = sorted(df_chunk[partition_col].unique().tolist())
+            part_key = str(pv[0]) if len(pv)==1 else f"{pv[0]}-{pv[-1]}"
+        else:
+            r0 = orig_rows + chunk_start
+            part_key = f"rows_{r0}_{r0 + chunk_end - chunk_start - 1}"
+
+        new_index_entries.append({
+            'chunk_id':   len(index_entries) + len(new_chunk_blobs),
+            'row_start':  orig_rows + chunk_start,
+            'row_end':    orig_rows + chunk_end - 1,
+            'part_key':   part_key,
+            'part_col':   partition_col,
+            'byte_offset': None,
+            'byte_len':   len(compressed),
+            'sha256':     sha.hex(),
+        })
+        new_chunk_blobs.append((compressed, sha))
+
+    # Calculate byte offsets for new chunks in the rewritten file
+    # New layout: [new_hdr][new_hdr_sha][existing_chunks][new_chunks][new_index]
+    cursor = h['payload_start'] + len(existing_chunks_bytes)
+    for i, (blob, _) in enumerate(new_chunk_blobs):
+        new_index_entries[i]['byte_offset'] = cursor + 4
+        cursor += 4 + len(blob) + 32
+
+    all_index = index_entries + new_index_entries
+    total_rows   = orig_rows + len(df_new)
+    total_chunks = len(all_index)
+
+    # Patch header: N_CHUNKS (offset 10, 2B) and ORIG_ROWS (variable position)
+    hdr_bytes = bytearray(raw[:h['hdr_end']])
+    struct.pack_into('>H', hdr_bytes, 10, total_chunks)
+    or_offset = _find_orig_rows_offset(raw)
+    struct.pack_into('>Q', hdr_bytes, or_offset,     total_rows)
+    struct.pack_into('>Q', hdr_bytes, or_offset + 8, total_rows)
+    new_hdr_sha = _sha256(bytes(hdr_bytes))
+
+    new_index_json = json.dumps(all_index, ensure_ascii=False).encode()
+    new_index_sha  = _sha256(new_index_json)
+
+    # Atomic write via temp file
+    tmp = path + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(bytes(hdr_bytes)); f.write(new_hdr_sha)
+        f.write(existing_chunks_bytes)
+        for blob, sha in new_chunk_blobs:
+            f.write(struct.pack('>I', len(blob))); f.write(blob); f.write(sha)
+        f.write(new_index_json)
+        f.write(struct.pack('>I', len(new_index_json)))
+        f.write(new_index_sha); f.write(EOF_MAGIC)
+    os.replace(tmp, path)
+
+    return {
+        'appended_rows': len(df_new),
+        'total_rows':    total_rows,
+        'total_chunks':  total_chunks,
+        'append_s':      round(time.time() - t0, 3),
+    }
+
 
 # ── AUDIT ─────────────────────────────────────────────────────────────────────
 def audit(path: str | os.PathLike) -> dict[str, Any]:
