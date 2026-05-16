@@ -99,6 +99,7 @@ nav:
     - Cloud Storage (S3/GCS/Azure): user-guide/cloud.md
     - Catalog (DuckDB): user-guide/catalog.md
     - Cluster Distribuído: user-guide/cluster.md
+    - Encryption (AES-256-GCM): user-guide/encryption.md
   - API Reference:
     - PermafrostContext (v1.0): api-reference/context.md
     - Core (freeze/thaw/audit): api-reference/core.md

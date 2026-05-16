@@ -167,7 +167,26 @@ print(f"Vault ratio: {metrics_vault['ratio']:.2f}×")  # ~10×+ vs ~8.5× lossle
 
 ---
 
-## 7. PermafrostContext — API unificada (v1.0)
+## 7. Encryption at rest (AES-256-GCM)
+
+```python
+key = b"my-secret-key-exactly-32-bytes!!"
+
+# Freeze with encryption — same API, just add key=
+pf.freeze(df, "sensitive.permafrost", key=key)
+
+# Thaw — provide the same key
+df_back = pf.thaw("sensitive.permafrost", key=key)
+
+# Selective read works on encrypted files too
+df_2023 = pf.thaw("sensitive.permafrost", filter={"ano": 2023}, key=key)
+```
+
+Encryption is per-chunk (AES-256-GCM with unique nonce per chunk), so sparse index reads remain possible even on encrypted files. For production, use a [KMS provider](user-guide/encryption.md) instead of a raw key.
+
+---
+
+## 8. PermafrostContext — API unificada (v1.0)
 
 Para workflows mais completos, use `PermafrostContext` em vez de chamar
 `freeze()`, `thaw()`, `audit()` e `PermafrostCatalog` separadamente:
@@ -200,7 +219,7 @@ Veja a [referência completa do PermafrostContext](api-reference/context.md).
 
 ---
 
-## 8. Próximos passos
+## 9. Próximos passos
 
 <div class="grid cards" markdown>
 
@@ -218,5 +237,8 @@ Veja a [referência completa do PermafrostContext](api-reference/context.md).
 
 - :material-server-network: **[Cluster](user-guide/cluster.md)**
   — Processamento distribuído
+
+- :material-lock: **[Encryption](user-guide/encryption.md)**
+  — AES-256-GCM per chunk, KMS providers
 
 </div>

@@ -1,10 +1,10 @@
 # Contributing
 
-Obrigado pelo interesse em contribuir com o Permafrost!
+Thank you for your interest in contributing to Permafrost!
 
 ---
 
-## Setup do ambiente
+## Environment setup
 
 ```bash
 git clone https://github.com/caua-ferreira/permafrost-framework
@@ -14,66 +14,68 @@ pip install -e '.[dev]'
 
 ---
 
-## Rodando os testes
+## Running tests
 
 ```bash
-# Suite completa
+# Full suite
 pytest tests/ -v
 
-# Testes específicos
+# Specific test files
 pytest tests/test_freeze_thaw.py -v
 pytest tests/test_catalog.py -v
 pytest tests/test_cluster.py -v
 
-# Com cobertura
+# With coverage
 pytest tests/ --cov=src/permafrost --cov-report=html
 ```
 
 ---
 
-## Estrutura do projeto
+## Project structure
 
 ```
 src/permafrost/
-    __init__.py          # Expõe a API pública
-    codec.py             # freeze(), thaw(), audit(), preditores
+    __init__.py          # Public API exports
+    codec.py             # freeze(), thaw(), audit(), predictors
     catalog.py           # PermafrostCatalog (DuckDB)
     chunk_mode.py        # freeze_stream(), freeze_file(), thaw_iter()
     cli.py               # CLI (typer + rich)
     cluster.py           # Master, Worker, Client
     schema_detector.py   # SchemaDetector, DataType
-    storage.py           # Adapters de cloud storage
+    storage.py           # Cloud storage adapters
+    crypto.py            # AES-256-GCM encryption, KMS providers
+    context.py           # PermafrostContext — unified high-level API
 ```
 
 ---
 
-## Como adicionar um novo codec
+## How to add a new codec
 
-1. Escolher o próximo `codec_id` disponível em `codec.py`
-2. Implementar `_compress_bytes()` e `_decompress_bytes()` para o novo codec
-3. Adicionar a constante `CODEC_MEUCODEC = 0x0N`
-4. Exportar a constante em `__init__.py`
-5. Adicionar ao mapa de nomes em `audit()`
-6. Escrever testes em `tests/test_freeze_thaw.py`
-
----
-
-## Como adicionar um novo StorageAdapter
-
-1. Criar classe que herda de `StorageAdapter` em `storage.py`
-2. Implementar todos os métodos abstratos (`upload`, `download`, `exists`, etc.)
-3. Adicionar ao factory `storage_from_uri()` com o novo scheme URI
-4. Exportar em `__init__.py`
-5. Adicionar dependência opcional em `pyproject.toml`
+1. Pick the next available `codec_id` in `codec.py`
+2. Implement `_compress_bytes()` and `_decompress_bytes()` for the new codec
+3. Add the constant `CODEC_MYCODEC = 0x0N`
+4. Export the constant in `__init__.py`
+5. Add to the name map in `audit()`
+6. Write tests in `tests/test_freeze_thaw.py`
 
 ---
 
-## Processo de PR
+## How to add a new StorageAdapter
 
-1. Fork + branch descritiva (`feat/zpaq-codec`, `fix/timestamp-encoding`)
-2. Código + testes (sem regressão nos 91 testes existentes)
-3. `pytest tests/ -v` deve passar completamente
-4. PR com descrição do que e por quê
+1. Create a class inheriting from `StorageAdapter` in `storage.py`
+2. Implement all abstract methods (`upload`, `download`, `exists`, etc.)
+3. Add to the `storage_from_uri()` factory with the new URI scheme
+4. Export in `__init__.py`
+5. Add optional dependency in `pyproject.toml`
+
+---
+
+## PR process
+
+1. Fork + descriptive branch (`feat/zpaq-codec`, `fix/timestamp-encoding`)
+2. Code + tests (no regression on the existing test suite)
+3. `pytest tests/ -v` must pass completely
+4. PR with description of what and why
 
 ---
 
@@ -143,5 +145,5 @@ def old_name(*args, **kwargs):
 
 ## Code of Conduct
 
-Este projeto segue o [Contributor Covenant](https://www.contributor-covenant.org/).
-Seja respeitoso, construtivo e inclusivo.
+This project follows the [Contributor Covenant](https://www.contributor-covenant.org/).
+Be respectful, constructive, and inclusive.

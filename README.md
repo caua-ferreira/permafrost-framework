@@ -36,9 +36,11 @@ Permafrost solves this with two mechanisms:
 
 Raw CSV:                  16.35 GB  (1.00×)
 Parquet + Snappy:          5.89 GB  (2.78×)   freeze:  8.9 min
-CSV + plain LZMA2 (p9):    ~3.80 GB  (~4.3×)   freeze: ~7 h  ⚠️
+CSV + plain LZMA2 (p9):   ~3.80 GB  (~4.3×)   freeze:  ~7 h  ⚠️ impractical
 Permafrost + ZSTD:         3.25 GB  (5.03×)   freeze: 77.7 min
-Permafrost + LZMA2:        3.03 GB  (5.40×)   freeze: 93.5 min   ← 4.5× better ratio than plain LZMA2
+Permafrost + LZMA2:        3.03 GB  (5.40×)   freeze: 93.5 min   ← nearly 2× better than Parquet
+
+Query only year 2022 → 42M rows in 5.7 min — read 20% of the file, 80% never touched
 ```
 
 ---
