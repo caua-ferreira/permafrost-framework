@@ -14,7 +14,7 @@
 
 **Distributed intelligent compression platform for long-term digital archiving.**
 
-*21 million rows: Permafrost + LZMA2 = 0.33 GB vs CSV = 2.13 GB (6.5×), freeze in 6.5 min — and you read only the year you need in 8 seconds, without decompressing the rest.*
+*210 million rows: Permafrost + LZMA2 = 3.03 GB vs CSV = 16.35 GB (5.4×) — nearly 2× better than Parquet. Query a single year from 5 years of data: 42M rows read, only 20% of the file touched.*
 
 [Documentation](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api-reference) · [Contributing](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
 
@@ -32,13 +32,13 @@ Permafrost solves this with two mechanisms:
 2. **Sparse index** — an index embedded in the file that points to the exact byte offset of each chunk, enabling selective reads via HTTP Range Requests without downloading the entire file
 
 ```
-1,050,000 rows × 13 columns — real benchmark measured locally:
+210,000,000 rows × 13 columns — real benchmark measured locally:
 
-Raw CSV:                 103.9 MB  (1.00×)
-Parquet + Snappy:         37.8 MB  (2.75×)   freeze: 0.6s
-CSV + plain LZMA2:        24.2 MB  (4.29×)   freeze: 125.5s
-Permafrost + ZSTD:        17.3 MB  (6.02×)   freeze: 14.8s   ← 8.5× faster than plain LZMA2
-Permafrost + LZMA2:       15.9 MB  (6.53×)   freeze: 19.3s   ← +52% vs plain LZMA2, 6.5× faster
+Raw CSV:                  16.35 GB  (1.00×)
+Parquet + Snappy:          5.89 GB  (2.78×)   freeze:  8.9 min
+CSV + plain LZMA2 (p9):    ~3.80 GB  (~4.3×)   freeze: ~7 h  ⚠️
+Permafrost + ZSTD:         3.25 GB  (5.03×)   freeze: 77.7 min
+Permafrost + LZMA2:        3.03 GB  (5.40×)   freeze: 93.5 min   ← 4.5× better ratio than plain LZMA2
 ```
 
 ---
@@ -192,37 +192,36 @@ permafrost catalog cost-report --tier glacier_deep
 
 ## Benchmarks
 
-**Dataset:** 21,000,000 rows × 13 columns — real corporate data (IDs, timestamps, categories, floats, integers)  
+**Dataset:** 210,000,000 rows × 13 columns — real corporate data (IDs, timestamps, categories, floats, integers)  
 **Period:** 2020–2024, partitioned by year | **Measured locally — not estimates.**
 
 ### Compression vs. alternatives
 
 | Format | Size | Ratio | Write time |
 |--------|------|-------|------------|
-| Raw CSV | 2.13 GB | 1.00× | — |
-| Parquet + Snappy | 0.78 GB | 2.72× | 9.8s |
-| CSV + plain LZMA2 *(p9)* | ~0.50 GB | ~4.3× | **~44 min** ⚠️ |
-| **Permafrost + ZSTD** | **0.35 GB** | **6.11×** | **312.6s** |
-| **Permafrost + LZMA2** | **0.33 GB** | **6.51×** | **392.3s** |
+| Raw CSV | 16.35 GB | 1.00× | — |
+| Parquet + Snappy | 5.89 GB | 2.78× | 8.9 min |
+| CSV + plain LZMA2 *(p9)* | ~3.80 GB | ~4.3× | **~7 h** ⚠️ |
+| **Permafrost + ZSTD** | **3.25 GB** | **5.03×** | **77.7 min** |
+| **Permafrost + LZMA2** | **3.03 GB** | **5.40×** | **93.5 min** |
 
-> ⚠️ Plain LZMA2 at preset=9 on 2.13 GB takes ~44 min — **impractical for real data pipelines**. Permafrost delivers a higher ratio in 6.5 min because column predictors reduce entropy before the codec, so the same LZMA2 works less and finishes faster.
+> ⚠️ Plain LZMA2 at preset=9 on 16 GB would take ~7 hours — **impractical for real data pipelines**. Permafrost delivers a higher ratio because column predictors reduce entropy before the codec: the same LZMA2 receives a highly structured stream, works less, and finishes faster.
 
 ### Selective Read — Sparse Index
 
 ```python
-# Read only 2022 from a file with 5 years / 21M rows of data
+# Read only 2022 from a file with 5 years / 210M rows of data
 df_2022 = pf.thaw("history.permafrost", filter={"year": 2022})
-# 4,505,143 rows in 7.98s — read only 70.8 MB of 326.8 MB (21.7% of the file)
+# 42,007,186 rows in 5.7 min — read only 20% of the file, 80% never touched
 ```
 
-With CSV, Parquet or `.xz`, you would need to decompress the full 2.13 GB to access a single year.
+With CSV, Parquet or `.xz`, you would need to decompress the full 16.35 GB to access a single year.
 
-### Full Thaw and Audit
+### Audit — metadata without decompressing
 
 ```python
-df = pf.thaw("history.permafrost")           # 21M rows in 29.0s
-info = pf.audit("history.permafrost")         # 180ms for 21M rows — without decompressing anything
-# {"orig_rows": 21000000, "n_chunks": 420, "codec": "lzma2", ...}
+info = pf.audit("history.permafrost")   # 9.2s for 210M rows — no decompression
+# {"orig_rows": 210000000, "n_chunks": 4200, "codec": "lzma2", ...}
 ```
 
 ### Why does Permafrost compress better than plain LZMA2?
@@ -237,15 +236,15 @@ info = pf.audit("history.permafrost")         # 180ms for 21M rows — without d
 | `category_u8` | categories (≤256 values) | string → uint8 index (1 byte per row) |
 | `json_schema_v2` | JSON columns | key compression via shared dictionary |
 
-Plain LZMA2 receives 2.13 GB of semi-random bytes and takes 44 min. Permafrost delivers the same LZMA2 a highly structured stream — 51% better ratio in 6.5 min.
+Plain LZMA2 receives 16 GB of semi-random bytes and takes ~7 hours. Permafrost delivers the same LZMA2 a highly structured stream — 26% better ratio in 93 minutes.
 
 ### Cloud storage cost (S3 Glacier Deep Archive)
 
-| Original volume | Without Permafrost | With Permafrost (6.5×) | Monthly savings |
+| Original volume | Without Permafrost | With Permafrost (5.4×) | Monthly savings |
 |-----------------|--------------------|------------------------|----------------|
-| 1 TB | $0.99 | **$0.15** | **-85%** |
-| 10 TB | $9.90 | **$1.52** | **-85%** |
-| 100 TB | $99.00 | **$15.23** | **-85%** |
+| 1 TB | $0.99 | **$0.18** | **-81%** |
+| 10 TB | $9.90 | **$1.83** | **-81%** |
+| 100 TB | $99.00 | **$18.33** | **-81%** |
 
 ---
 
