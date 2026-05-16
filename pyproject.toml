@@ -53,3 +53,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore::UserWarning", "ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+omit = ["src/permafrost/spark.py"]
+
+[tool.coverage.report]
+omit = ["src/permafrost/spark.py"]
