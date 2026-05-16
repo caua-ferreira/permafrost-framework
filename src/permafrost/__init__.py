@@ -5,6 +5,7 @@ Plataforma distribuída de compressão inteligente para arquivamento digital de 
 
 Uso rápido:
     from permafrost import freeze, thaw, audit
+    from permafrost import PermafrostContext               # API unificada (v1.0)
     from permafrost import PermafrostCatalog, SchemaDetector
     from permafrost import freeze_to, thaw_from          # cloud
     from permafrost import PermafrostMaster, PermafrostWorker, PermafrostClient  # cluster
@@ -27,7 +28,7 @@ Links:
     Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
-__version__  = "0.7.1"
+__version__  = "0.8.0"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 
@@ -100,6 +101,9 @@ from permafrost.auto_codec import (
     profile_dataframe,
 )
 
+# ── High-level context ────────────────────────────────────────────────────────
+from permafrost.context import PermafrostContext
+
 # ── Catalog (DuckDB index) ────────────────────────────────────────────────────
 from permafrost.catalog import PermafrostCatalog
 
@@ -138,6 +142,8 @@ __all__ = [
     "SchemaDetector", "DataType", "FieldKind",
     # Chunk mode
     "freeze_stream", "freeze_file", "thaw_iter",
+    # Context (high-level API)
+    "PermafrostContext",
     # Catalog
     "PermafrostCatalog",
     # Storage
