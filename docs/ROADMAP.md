@@ -1,6 +1,6 @@
 # Roadmap — Permafrost Data Framework
 
-> **Versão atual:** 0.6.4 — branch `main`  
+> **Versão atual:** 0.7.1 — branch `main`  
 > **Última atualização:** 2026-05-15
 
 ---
@@ -32,9 +32,9 @@ Tudo abaixo está implementado, testado e publicado no PyPI.
 
 ---
 
-## Crítico — v0.7 (próximo sprint)
+## Crítico — v0.7 ✅ (completo)
 
-Features que bloqueiam adoção em produção. **Começar por aqui.**
+Todas as features críticas estão implementadas, testadas e publicadas no PyPI.
 
 ### C1 — Encryption at Rest (AES-256-GCM) ✅
 
@@ -47,39 +47,34 @@ Features que bloqueiam adoção em produção. **Começar por aqui.**
 - [x] Formato: nonce (12 bytes) + tag (16 bytes) por chunk; EDK no `enc_meta` do header
 - [x] Testes: round-trip cifrado, tamper detection (SHA-256 + GCM tag), mocks AWS/GCP (69 testes)
 
-### C2 — Preditor `float32_quantized` (lossy, alta performance)
+### C2 — Preditor `float32_quantized` (lossy, alta performance) ✅
 
-**Por que é crítico:** sensores, embeddings ML, séries temporais financeiras — maior ganho de compressão com perda controlada.
+- [x] Quantiza float64 → float32 (`PRED_FLOAT32`) ou float16 (`PRED_FLOAT16`)
+- [x] `precision_bits` (16, 32) documentado por coluna no manifesto
+- [x] `max_abs_error` e `max_rel_error` por coluna expostos em `audit()` → `lossy_columns`
+- [x] Integrado com `QUANT_HIGH` (→ float32) e `QUANT_LOW` (→ float16) automaticamente
+- [x] Suporte a override explícito via `freeze(df, path, predictors={"col": "float32_quantized"})`
 
-- [ ] Quantiza float64 → float32 (ou int16 com scale factor)
-- [ ] Parâmetro `precision_bits` (16, 32) por coluna ou global
-- [ ] Erro máximo garantido: documentado no `audit()` por coluna
-- [ ] Integração com `QUANT_HIGH` / `QUANT_MEDIUM` já existentes
-- [ ] Benchmark: comparar com Parquet ZSTD em dataset de embeddings 1536-dim
+### C3 — Schema Evolution (thaw com schema mais novo que o arquivo) ✅
 
-### C3 — Schema Evolution (thaw com schema mais novo que o arquivo)
+- [x] `thaw()` aceita `schema_override: pa.Schema` para cast automático
+- [x] Regras: colunas novas → null, colunas removidas → ignoradas, tipo compatível → cast
+- [x] `schema_diff()` retorna diff entre schema gravado e schema fornecido
+- [x] `apply_schema_evolution()` exportada para uso standalone
+- [x] Testes de round-trip com schema evoluído em `test_schema_evolution.py`
 
-**Por que é crítico:** dados congelados em 2024 precisam ser lidos em 2030 com schema diferente.
+### C4 — Retry + Resumable Upload no StorageAdapter ✅
 
-- [ ] `thaw()` aceita `schema_override: pa.Schema` para cast automático
-- [ ] Regras: colunas novas → null, colunas removidas → ignoradas, tipo compatível → cast
-- [ ] `audit()` mostra diff entre schema gravado e schema atual do catalog
-- [ ] Testes: arquivo v0.6 lido por código v1.0 com schema evoluído
-
-### C4 — Retry + Resumable Upload no StorageAdapter
-
-**Por que é crítico:** uploads de arquivos grandes para S3/GCS falham em links instáveis. Hoje um erro no meio força reiniciar do zero.
-
-- [ ] Interface: `upload_resumable(local_path, remote_uri, chunk_size=100MB)`
-- [ ] State file local (`.permafrost.upload_state`) para retomar
-- [ ] Retry com exponential backoff (3 tentativas, max 60s)
-- [ ] Suporte: S3 multipart upload, GCS resumable upload, Azure block blob
+- [x] `upload_resumable()` em LocalAdapter e S3Adapter
+- [x] State file `.upload_state` JSON indexado por `src_mtime + src_size + remote_uri`
+- [x] Retry com exponential backoff (3 tentativas, até 60s)
+- [x] S3 Multipart Upload com ETags persistidos; `ResumableUploadError` exportada
 
 ---
 
-## Importante — v0.8
+## Importante — v0.8 ✅ (completo)
 
-Qualidade de vida e ecossistema. Fazer depois do v0.7.
+Todas as features de ecossistema estão implementadas.
 
 ### I1 — Helm Chart + Kubernetes Operator ✅
 
@@ -89,12 +84,12 @@ Qualidade de vida e ecossistema. Fazer depois do v0.7.
 - [x] `Dockerfile.operator` — imagem kopf + permafrost
 - [x] Fases: Pending → Running → Completed | Failed
 
-### I2 — Codec Auto-Selector (ML leve)
+### I2 — Codec Auto-Selector (ML leve) ✅
 
-- [ ] Analisa amostra de 1000 linhas do DataFrame e escolhe codec + nível ótimo
-- [ ] Modelo: decision tree treinada em benchmarks internos (sem dependência externa)
-- [ ] API: `freeze(df, path, codec="auto")` — padrão futuro
-- [ ] Benchmark: auto-selector bate seleção manual em >80% dos datasets de teste
+- [x] Analisa amostra de 1.000 linhas e escolhe codec + quantização ótimos (`auto_select()`)
+- [x] `DataProfile`: float_col_ratio, str_cardinality_mean, float_cv_mean, estimated_mb
+- [x] API: `freeze(df, path, codec="auto")` — retorna `auto_reason` nas métricas
+- [x] `CODEC_AUTO`, `DataProfile`, `auto_select`, `profile_dataframe` exportados
 
 ### I3 — CLI Binary Standalone (zero-deps) ✅
 
