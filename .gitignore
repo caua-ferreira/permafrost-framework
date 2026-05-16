@@ -39,6 +39,9 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 
+# Sandbox local — testes manuais e experimentos
+sandbox/
+
 .claude
 
 
