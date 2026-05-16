@@ -114,8 +114,10 @@ jobs:
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          # Extract section for this version from CHANGELOG.md
-          awk "/^## \[?${VERSION//v/}\]?/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md > release_notes.md
+          VER_BARE="${VERSION#v}"
+          if [ -f CHANGELOG.md ]; then
+            awk "/^## \[?${VER_BARE}\]?/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md > release_notes.md
+          fi
           if [ ! -s release_notes.md ]; then
             echo "Standalone binary release for ${VERSION}." > release_notes.md
           fi
