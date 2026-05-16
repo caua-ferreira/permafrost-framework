@@ -14,7 +14,7 @@
 
 **Plataforma distribuída de compressão inteligente para arquivamento digital de longo prazo.**
 
-*Comprime dados históricos com até 33× ratio — e deixa você consultar só o que precisa, sem descomprimir tudo.*
+*1 milhão de linhas: Permafrost + LZMA2 = 15.9 MB vs CSV = 103.9 MB (6.5×) — e você lê só o ano que precisa, sem descomprimir o resto.*
 
 [Documentação](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api) · [Contribuir](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
 
@@ -32,9 +32,13 @@ O Permafrost resolve isso com dois mecanismos:
 2. **Sparse index** — índice embutido no arquivo que aponta o byte exato de cada chunk, permitindo leitura seletiva via HTTP Range Request sem baixar o arquivo inteiro
 
 ```
-CSV bruto:                  5.85 MB
-CSV + LZMA2 puro:           0.499 MB  (ratio 5.97×)
-CSV + Permafrost + LZMA2:   0.284 MB  (ratio 10.50×)  ← +76% pelos preditores colunares
+1.050.000 linhas × 13 colunas — benchmark real medido localmente:
+
+CSV bruto:               103.9 MB  (1.00×)
+Parquet + Snappy:         37.8 MB  (2.75×)   freeze: 0.6s
+CSV + LZMA2 puro:         24.2 MB  (4.29×)   freeze: 125.5s
+Permafrost + ZSTD:        17.3 MB  (6.02×)   freeze: 14.8s   ← 8.5× mais rápido que LZMA2 puro
+Permafrost + LZMA2:       15.9 MB  (6.53×)   freeze: 19.3s   ← +52% vs LZMA2 puro, 6.5× mais rápido
 ```
 
 ---
@@ -188,41 +192,71 @@ permafrost catalog cost-report --tier glacier_deep
 
 ## Benchmarks
 
-Medidos em hardware real (não estimativas):
+**Dataset:** 1.050.000 linhas × 13 colunas (dados corporativos: IDs, timestamps, categorias, floats, inteiros)  
+**Período:** 2020–2024, particionado por ano | Medido localmente — não são estimativas.
 
-| Dataset | Original | .permafrost | Ratio | Codec |
-|---------|----------|-------------|-------|-------|
-| CSV corporativo (80k linhas × 9 colunas) | 5.85 MB | **0.678 MB** | **8.37×** | LZMA2 |
-| JSONL social media (5k posts) | 1.44 MB | **0.043 MB** | **33×** | LZMA2 |
-| Streaming 300k linhas | ~97 MB est. | **1.018 MB** | **95×** | LZMA2 |
-| CSV numérico (delta_zigzag) | 5.85 MB | **0.284 MB** | **10.50×** | LZMA2 |
+### Compressão vs. alternativas
 
-**Custo em cloud storage:**
+| Formato | Tamanho | Ratio | Tempo de escrita |
+|---------|---------|-------|-----------------|
+| CSV bruto | 103.9 MB | 1.00× | — |
+| Parquet + Snappy | 37.8 MB | 2.75× | 0.6s |
+| CSV + LZMA2 puro | 24.2 MB | 4.29× | 125.5s |
+| **Permafrost + ZSTD** | **17.3 MB** | **6.02×** | **14.8s** |
+| **Permafrost + LZMA2** | **15.9 MB** | **6.53×** | **19.3s** |
 
-| Volume | S3 Glacier Deep Archive sem Permafrost | Com Permafrost | Economia |
-|--------|----------------------------------------|----------------|----------|
-| 1 TB/mês | $0.99 | **$0.12** | **-88%** |
-| 10 TB/mês | $9.90 | **$1.20** | **-88%** |
-| 100 TB/mês | $99.00 | **$11.88** | **-88%** |
+> Permafrost LZMA2 comprime **52% mais** que LZMA2 puro e é **6.5× mais rápido** — porque os preditores colunares reduzem a entropia antes do codec.
 
-**Por que o Permafrost comprime melhor que LZMA2 puro?**
+### Leitura seletiva — Sparse Index
 
-Os preditores colunares transformam os dados *antes* do codec:
-- `delta_zigzag` — para séries numéricas: guarda a diferença entre valores consecutivos (muito menor e mais compressível)
-- `lag1_zigzag` — para séries com tendência linear
-- `ts_delta_s` — para timestamps: guarda o delta em segundos
-- `category_u8` — para colunas categóricas: substitui strings por inteiros de 1 byte
-- `raw_text` — para texto livre: passa direto para o codec
+```python
+# Ler apenas 2022 de um arquivo com 5 anos de dados
+df_2022 = pf.thaw("historico.permafrost", filter={"ano": 2022})
+# 210.240 linhas em 0.42s — leu apenas 3.3 MB de 15.9 MB (20.8% do arquivo)
+```
+
+Com CSV, Parquet ou `.xz`, seria preciso descomprimir os 103 MB para acessar um único ano.
+
+### Audit sem descomprimir
+
+```python
+info = pf.audit("historico.permafrost")  # 9.8ms para 1.050.000 linhas
+# {"orig_rows": 1050000, "codec": "lzma2", "n_chunks": 105, "partition_keys": [...]}
+```
+
+O `audit()` lê apenas o header e o sparse index (últimos KB do arquivo) — não toca nos chunks.
+
+### Por que o Permafrost comprime melhor que LZMA2 puro?
+
+Os **preditores colunares** transformam os dados *antes* do codec — cada tipo de coluna vira um stream mais simples e regular:
+
+| Predictor | Coluna | Transformação |
+|-----------|--------|---------------|
+| `delta_zigzag` | IDs, inteiros | diferença entre consecutivos → valores pequenos perto de zero |
+| `lag1_zigzag` | floats, preços | resíduo lag-1 × escala → valores pequenos perto de zero |
+| `ts_delta_s` | timestamps | delta em segundos → inteiros pequenos |
+| `category_u8` | categorias (≤256 valores) | string → índice uint8 (1 byte por linha) |
+| `json_schema_v2` | colunas JSON | compressão de chaves por dicionário compartilhado |
+
+O LZMA2 puro recebe bytes que parecem semi-aleatórios. O Permafrost entrega ao mesmo LZMA2 um stream altamente estruturado — daí o ganho de 52% com metade do tempo.
+
+### Custo em cloud storage (S3 Glacier Deep Archive)
+
+| Volume original | Sem Permafrost | Com Permafrost (6.5×) | Economia/mês |
+|-----------------|----------------|----------------------|--------------|
+| 1 TB | $0.99 | **$0.15** | **-85%** |
+| 10 TB | $9.90 | **$1.52** | **-85%** |
+| 100 TB | $99.00 | **$15.23** | **-85%** |
 
 ---
 
-## Formato `.permafrost` v1.2
+## Formato `.permafrost` v1.3
 
 O formato é auto-descritivo — legível sem documentação externa:
 
 ```
 [MAGIC: "PRMS" 4B]              identificação
-[VERSION: 1.2 2B]
+[VERSION: 1.3 2B]
 [FLAGS: bitmask 2B]             delta | quantize | chunked | predictor | index
 [CODEC_ID: 1B]                  0x01=Zstd | 0x02=LZMA2 | 0x03=ZPAQ
 [QUANT: 1B]                     0x00=lossless | 0x01=high | 0x02=medium | 0x03=low
