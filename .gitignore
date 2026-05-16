@@ -18,6 +18,8 @@ data/samples/*.permafrost
 # Resultados de benchmark (gerados em runtime)
 benchmarks/results/*.json
 !benchmarks/results/README.md
+bench_*.py
+coverage.json
 
 # IDE
 .vscode/
