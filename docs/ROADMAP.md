@@ -146,6 +146,16 @@ Todas as features de ecossistema estão implementadas.
 
 ---
 
+## Platform (produto comercial — roadmap separado)
+
+O Permafrost segue o modelo **open-core**: o framework permanece open-source e gratuito. Uma plataforma de gestão visual será desenvolvida como produto comercial separado sobre este core.
+
+**Proposta:** interface web para gestão de arquivos `.permafrost` em escala empresarial, com integração nativa a contas AWS / GCP / Azure do próprio cliente — os dados nunca saem da infraestrutura do cliente.
+
+Detalhes no repositório privado do produto.
+
+---
+
 ## Analogia com Apache Spark
 
 | Spark | Permafrost | Status |
