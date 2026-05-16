@@ -23,7 +23,7 @@ Verifique a instalação:
 
 ```python
 import permafrost as pf
-print(pf.__version__)   # 0.5.0
+print(pf.__version__)   # 0.8.0
 ```
 
 ---
@@ -167,9 +167,45 @@ print(f"Vault ratio: {metrics_vault['ratio']:.2f}×")  # ~10×+ vs ~8.5× lossle
 
 ---
 
-## 7. Próximos passos
+## 7. PermafrostContext — API unificada (v1.0)
+
+Para workflows mais completos, use `PermafrostContext` em vez de chamar
+`freeze()`, `thaw()`, `audit()` e `PermafrostCatalog` separadamente:
+
+```python
+# Tudo em um objeto — catalog + storage + cluster
+ctx = pf.PermafrostContext(
+    catalog="catalog.db",
+    storage="s3://meu-bucket/cold/",   # opcional
+)
+
+# Freeze + upload + catalog register em uma linha
+metrics = ctx.freeze(df, "vendas_2024", partition_by="ano")
+
+# Thaw com filtro
+df_2023 = ctx.thaw("vendas_2024", filter={"ano": 2023})
+
+# Buscar no catalog
+ctx.search(name="vendas", lossless_only=True)
+
+# Custo estimado
+ctx.cost_report("glacier_deep")
+
+# Context manager fecha conexões automaticamente
+with pf.PermafrostContext(catalog="catalog.db") as ctx:
+    ctx.freeze(df, "backup_2024")
+```
+
+Veja a [referência completa do PermafrostContext](api-reference/context.md).
+
+---
+
+## 8. Próximos passos
 
 <div class="grid cards" markdown>
+
+- :material-layers: **[PermafrostContext](api-reference/context.md)**
+  — API unificada para catalog + storage + cluster
 
 - :material-database: **[Dados SQL & NoSQL](user-guide/nosql.md)**
   — CSV, JSONL, MongoDB, DynamoDB
