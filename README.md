@@ -14,7 +14,7 @@
 
 **Plataforma distribuída de compressão inteligente para arquivamento digital de longo prazo.**
 
-*1 milhão de linhas: Permafrost + LZMA2 = 15.9 MB vs CSV = 103.9 MB (6.5×) — e você lê só o ano que precisa, sem descomprimir o resto.*
+*21 milhões de linhas: Permafrost + LZMA2 = 0.33 GB vs CSV = 2.13 GB (6.5×), freeze em 6.5 min — e você lê só o ano que precisa em 8 segundos, sem descomprimir o resto.*
 
 [Documentação](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api) · [Contribuir](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
 
@@ -192,39 +192,38 @@ permafrost catalog cost-report --tier glacier_deep
 
 ## Benchmarks
 
-**Dataset:** 1.050.000 linhas × 13 colunas (dados corporativos: IDs, timestamps, categorias, floats, inteiros)  
-**Período:** 2020–2024, particionado por ano | Medido localmente — não são estimativas.
+**Dataset:** 21.000.000 linhas × 13 colunas — dados corporativos reais (IDs, timestamps, categorias, floats, inteiros)  
+**Período:** 2020–2024, particionado por ano | **Medido localmente — não são estimativas.**
 
 ### Compressão vs. alternativas
 
 | Formato | Tamanho | Ratio | Tempo de escrita |
 |---------|---------|-------|-----------------|
-| CSV bruto | 103.9 MB | 1.00× | — |
-| Parquet + Snappy | 37.8 MB | 2.75× | 0.6s |
-| CSV + LZMA2 puro | 24.2 MB | 4.29× | 125.5s |
-| **Permafrost + ZSTD** | **17.3 MB** | **6.02×** | **14.8s** |
-| **Permafrost + LZMA2** | **15.9 MB** | **6.53×** | **19.3s** |
+| CSV bruto | 2.13 GB | 1.00× | — |
+| Parquet + Snappy | 0.78 GB | 2.72× | 9.8s |
+| CSV + LZMA2 puro *(p9)* | ~0.50 GB | ~4.3× | **~44 min** ⚠️ |
+| **Permafrost + ZSTD** | **0.35 GB** | **6.11×** | **312.6s** |
+| **Permafrost + LZMA2** | **0.33 GB** | **6.51×** | **392.3s** |
 
-> Permafrost LZMA2 comprime **52% mais** que LZMA2 puro e é **6.5× mais rápido** — porque os preditores colunares reduzem a entropia antes do codec.
+> ⚠️ LZMA2 puro com preset=9 em 2.13 GB levaria ~44 min — **inviável para pipelines de dados reais**. O Permafrost entrega ratio maior em 6.5 min porque os preditores colunares reduzem a entropia antes do codec, fazendo o mesmo LZMA2 trabalhar menos e terminar mais rápido.
 
 ### Leitura seletiva — Sparse Index
 
 ```python
-# Ler apenas 2022 de um arquivo com 5 anos de dados
+# Ler apenas 2022 de um arquivo com 5 anos / 21M linhas de dados
 df_2022 = pf.thaw("historico.permafrost", filter={"ano": 2022})
-# 210.240 linhas em 0.42s — leu apenas 3.3 MB de 15.9 MB (20.8% do arquivo)
+# 4.505.143 linhas em 7.98s — leu apenas 70.8 MB de 326.8 MB (21.7% do arquivo)
 ```
 
-Com CSV, Parquet ou `.xz`, seria preciso descomprimir os 103 MB para acessar um único ano.
+Com CSV, Parquet ou `.xz`, seria necessário descomprimir os 2.13 GB inteiros para acessar um único ano.
 
-### Audit sem descomprimir
+### Thaw completo e Audit
 
 ```python
-info = pf.audit("historico.permafrost")  # 9.8ms para 1.050.000 linhas
-# {"orig_rows": 1050000, "codec": "lzma2", "n_chunks": 105, "partition_keys": [...]}
+df = pf.thaw("historico.permafrost")           # 21M linhas em 29.0s
+info = pf.audit("historico.permafrost")         # 180ms para 21M linhas — sem descomprimir nada
+# {"orig_rows": 21000000, "n_chunks": 420, "codec": "lzma2", ...}
 ```
-
-O `audit()` lê apenas o header e o sparse index (últimos KB do arquivo) — não toca nos chunks.
 
 ### Por que o Permafrost comprime melhor que LZMA2 puro?
 
@@ -238,7 +237,7 @@ Os **preditores colunares** transformam os dados *antes* do codec — cada tipo 
 | `category_u8` | categorias (≤256 valores) | string → índice uint8 (1 byte por linha) |
 | `json_schema_v2` | colunas JSON | compressão de chaves por dicionário compartilhado |
 
-O LZMA2 puro recebe bytes que parecem semi-aleatórios. O Permafrost entrega ao mesmo LZMA2 um stream altamente estruturado — daí o ganho de 52% com metade do tempo.
+O LZMA2 puro recebe 2.13 GB de bytes semi-aleatórios e leva 44 min. O Permafrost entrega ao mesmo LZMA2 um stream altamente estruturado — ratio 51% melhor em 6.5 min.
 
 ### Custo em cloud storage (S3 Glacier Deep Archive)
 
