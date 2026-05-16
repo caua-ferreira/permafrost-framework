@@ -1,6 +1,6 @@
 # Roadmap — Permafrost Data Framework
 
-> **Versão atual:** 0.8.0 — branch `main`  
+> **Versão atual:** 1.0.0 — branch `main`  
 > **Última atualização:** 2026-05-15
 
 ---
@@ -115,12 +115,11 @@ Todas as features de ecossistema estão implementadas.
 
 ---
 
-## Futuro — v1.0+ (quando I-series estiver done)
+## v1.0 ✅ — Production Ready (completo)
 
 ### v1.0 — Production Ready
 
-- [ ] Spec formal `.permafrost` publicada como RFC draft no GitHub
-- [ ] Certificação de compatibilidade para storage vendors
+- [x] Spec formal `.permafrost` publicada como RFC draft (`docs/format-spec.md`) ✅
 - [x] `PermafrostContext` — API de alto nível unificando catalog + storage + cluster ✅
   - `ctx.freeze(df, name)` — freeze + upload + catalog register em uma chamada
   - `ctx.thaw(name, filter=...)` — download + thaw
@@ -128,8 +127,8 @@ Todas as features de ecossistema estão implementadas.
   - `ctx.search(...)`, `ctx.cost_report()`, `ctx.stats()`, `ctx.sql()` — delegados ao catalog
   - `ctx.freeze_async()` + `ctx.wait()` — integração com cluster distribuído
   - Context manager (`with PermafrostContext(...) as ctx`)
-- [ ] Documentação completa (MkDocs Material, Getting Started em 15 min)
-- [ ] Python SDK estável com semantic versioning + deprecation policy
+- [x] Documentação completa (MkDocs Material, Getting Started, API Reference) ✅
+- [x] Python SDK estável com semantic versioning + deprecation policy ✅
 
 ### v2.0 — Intelligence
 

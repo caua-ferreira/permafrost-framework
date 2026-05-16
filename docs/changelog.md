@@ -6,6 +6,27 @@ Versioning follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2026-05-15
+
+First stable release. All v1.0 milestones complete.
+
+### Added
+- **`PermafrostContext`** — unified high-level API (catalog + storage + cluster)
+- **Format Spec RFC draft** — `docs/format-spec.md`, byte-level v1.3 specification
+- **SDK Stability Policy** — semantic versioning, deprecation process, public API contract
+- **MkDocs documentation** — full API reference, Getting Started, User Guide, Changelog
+
+### Changed
+- `Development Status` classifier: `3 - Alpha` → `5 - Production/Stable`
+- Version bump: `0.8.0` → `1.0.0`
+
+### Notes
+- All features from 0.1.0 through 0.8.0 are included and stable
+- `.permafrost` format v1.3 — backward-compatible with all v1.x files
+- Test suite: 385 passed, 5 skipped, 93% coverage
+
+---
+
 ## [0.8.0] — 2026-05-15
 
 ### Added
