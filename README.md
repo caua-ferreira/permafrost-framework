@@ -12,147 +12,147 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs-00D4FF)](https://caua-ferreira.github.io/permafrost-framework)
 
 
-**Plataforma distribuída de compressão inteligente para arquivamento digital de longo prazo.**
+**Distributed intelligent compression platform for long-term digital archiving.**
 
-*21 milhões de linhas: Permafrost + LZMA2 = 0.33 GB vs CSV = 2.13 GB (6.5×), freeze em 6.5 min — e você lê só o ano que precisa em 8 segundos, sem descomprimir o resto.*
+*21 million rows: Permafrost + LZMA2 = 0.33 GB vs CSV = 2.13 GB (6.5×), freeze in 6.5 min — and you read only the year you need in 8 seconds, without decompressing the rest.*
 
-[Documentação](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api) · [Contribuir](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
+[Documentation](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api-reference) · [Contributing](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
 
 </div>
 
 ---
 
-## O que é o Permafrost?
+## What is Permafrost?
 
-Dados corporativos históricos — CSVs, JSONL, dumps de MongoDB — ficam anos em cold storage (S3 Glacier, Azure Archive) pagando caro. O problema: se você precisa buscar os dados de um único mês em um arquivo de 10 GB, é necessário descomprimir **tudo**.
+Corporate historical data — CSVs, JSONL, MongoDB dumps — sits in cold storage (S3 Glacier, Azure Archive) for years at a high cost. The problem: if you need data from a single month in a 10 GB file, you have to decompress **everything**.
 
-O Permafrost resolve isso com dois mecanismos:
+Permafrost solves this with two mechanisms:
 
-1. **Preditores colunares** — transforma os dados semanticamente antes da compressão (delta, zigzag, timestamps, categorias), atingindo ratios muito superiores ao LZMA2 puro
-2. **Sparse index** — índice embutido no arquivo que aponta o byte exato de cada chunk, permitindo leitura seletiva via HTTP Range Request sem baixar o arquivo inteiro
+1. **Column predictors** — semantically transforms data before compression (delta, zigzag, timestamps, categories), achieving ratios far above plain LZMA2
+2. **Sparse index** — an index embedded in the file that points to the exact byte offset of each chunk, enabling selective reads via HTTP Range Requests without downloading the entire file
 
 ```
-1.050.000 linhas × 13 colunas — benchmark real medido localmente:
+1,050,000 rows × 13 columns — real benchmark measured locally:
 
-CSV bruto:               103.9 MB  (1.00×)
+Raw CSV:                 103.9 MB  (1.00×)
 Parquet + Snappy:         37.8 MB  (2.75×)   freeze: 0.6s
-CSV + LZMA2 puro:         24.2 MB  (4.29×)   freeze: 125.5s
-Permafrost + ZSTD:        17.3 MB  (6.02×)   freeze: 14.8s   ← 8.5× mais rápido que LZMA2 puro
-Permafrost + LZMA2:       15.9 MB  (6.53×)   freeze: 19.3s   ← +52% vs LZMA2 puro, 6.5× mais rápido
+CSV + plain LZMA2:        24.2 MB  (4.29×)   freeze: 125.5s
+Permafrost + ZSTD:        17.3 MB  (6.02×)   freeze: 14.8s   ← 8.5× faster than plain LZMA2
+Permafrost + LZMA2:       15.9 MB  (6.53×)   freeze: 19.3s   ← +52% vs plain LZMA2, 6.5× faster
 ```
 
 ---
 
-## Funcionalidades
+## Features
 
-- **Alta compressão** — preditores colunares (delta_zigzag, lag1_zigzag, ts_delta_s, category_u8, raw_text) antes de Zstd / LZMA2 / ZPAQ
-- **Leitura seletiva** — sparse index embutido permite `filter={"ano": 2023}` sem descomprimir o resto
-- **Integridade garantida** — SHA-256 por chunk, detectado antes de qualquer decompressão
-- **Auto-descritivo** — schema Arrow completo embutido no arquivo; legível em 2040 sem documentação externa
-- **Cloud-native** — suporte nativo a S3, Google Cloud Storage e Azure Blob Storage com HTTP Range Requests
-- **Catalog DuckDB** — busca em metadados de centenas de arquivos no S3 sem baixar nenhum
-- **Streaming** — processa datasets maiores que a RAM com `freeze_file()` e `thaw_iter()`
-- **Cluster distribuído** — Master + Workers via FastAPI; processa 1 TB em paralelo com N workers
-- **Spark DataSource v2** — integração nativa com PySpark 4.0+ com pushdown via sparse index
-- **CLI completa** — `permafrost freeze / thaw / audit / verify / catalog` com output rich
+- **High compression** — column predictors (delta_zigzag, lag1_zigzag, ts_delta_s, category_u8, raw_text) before Zstd / LZMA2 / ZPAQ
+- **Selective reads** — embedded sparse index enables `filter={"year": 2023}` without decompressing the rest
+- **Guaranteed integrity** — SHA-256 per chunk, verified before any decompression
+- **Self-describing** — full Arrow schema embedded in the file; readable in 2040 without external documentation
+- **Cloud-native** — native support for S3, Google Cloud Storage and Azure Blob Storage with HTTP Range Requests
+- **DuckDB Catalog** — metadata search across hundreds of remote files without downloading any of them
+- **Streaming** — process datasets larger than RAM with `freeze_file()` and `thaw_iter()`
+- **Distributed cluster** — Master + Workers via FastAPI; processes 1 TB in parallel with N workers
+- **Spark DataSource v2** — native integration with PySpark 4.0+ with sparse index pushdown
+- **Full CLI** — `permafrost freeze / thaw / audit / verify / catalog` with rich output
 
 ---
 
-## Instalação
+## Installation
 
 ```bash
-# Instalação básica
+# Basic installation
 pip install permafrost-framework
 
-# Com suporte a AWS S3
+# With AWS S3 support
 pip install "permafrost-framework[s3]"
 
-# Com suporte a Google Cloud Storage
+# With Google Cloud Storage support
 pip install "permafrost-framework[gcs]"
 
-# Com suporte a Azure Blob Storage
+# With Azure Blob Storage support
 pip install "permafrost-framework[azure]"
 
-# Todos os provedores cloud
+# All cloud providers
 pip install "permafrost-framework[all-cloud]"
 
-# Com Apache Spark
+# With Apache Spark
 pip install "permafrost-framework[spark]"
 ```
 
-**Requisitos:** Python 3.10+
+**Requirements:** Python 3.10+
 
 ---
 
 ## Quick Start
 
-### Freeze e Thaw básico
+### Basic Freeze and Thaw
 
 ```python
 import permafrost as pf
 import pandas as pd
 
-df = pd.read_csv("vendas_historico.csv")
+df = pd.read_csv("sales_history.csv")
 
-# Comprimir — retorna métricas
-metrics = pf.freeze(df, "vendas.permafrost", codec=pf.CODEC_LZMA2, partition_by="ano")
+# Compress — returns metrics
+metrics = pf.freeze(df, "sales.permafrost", codec=pf.CODEC_LZMA2, partition_by="year")
 print(f"Ratio: {metrics['ratio']:.2f}×  |  {metrics['original_mb']:.1f} MB → {metrics['stored_mb']:.1f} MB")
 # Ratio: 8.37×  |  5.85 MB → 0.68 MB
 
-# Descomprimir tudo
-df_back = pf.thaw("vendas.permafrost", verify=True)
+# Decompress everything
+df_back = pf.thaw("sales.permafrost", verify=True)
 
-# Descomprimir só 2023 — lê apenas os chunks daquele ano
-df_2023 = pf.thaw("vendas.permafrost", filter={"ano": 2023})
+# Decompress only 2023 — reads only the chunks for that year
+df_2023 = pf.thaw("sales.permafrost", filter={"year": 2023})
 ```
 
-### Streaming (datasets maiores que a RAM)
+### Streaming (datasets larger than RAM)
 
 ```python
-# Freeze de arquivo grande sem carregar na memória
-pf.freeze_file("100gb.csv", "saida.permafrost", chunk_rows=50_000)
+# Freeze a large file without loading it into memory
+pf.freeze_file("100gb.csv", "output.permafrost", chunk_rows=50_000)
 
-# Thaw iterativo em batches
-for batch_df in pf.thaw_iter("saida.permafrost", batch_size=50_000):
-    processar(batch_df)
+# Iterative thaw in batches
+for batch_df in pf.thaw_iter("output.permafrost", batch_size=50_000):
+    process(batch_df)
 ```
 
 ### Cloud (S3, GCS, Azure)
 
 ```python
-# Upload direto para S3
-pf.freeze_to(df, "s3://meu-bucket/dados/vendas.permafrost")
+# Upload directly to S3
+pf.freeze_to(df, "s3://my-bucket/data/sales.permafrost")
 
-# Leitura seletiva do S3 via HTTP Range Request — não baixa o arquivo inteiro
-df_2023 = pf.thaw_from("s3://meu-bucket/dados/vendas.permafrost", filter={"ano": 2023})
+# Selective read from S3 via HTTP Range Request — does not download the entire file
+df_2023 = pf.thaw_from("s3://my-bucket/data/sales.permafrost", filter={"year": 2023})
 
-# Auditoria remota sem baixar nada
-info = pf.audit_remote("s3://meu-bucket/dados/vendas.permafrost")
+# Remote audit without downloading anything
+info = pf.audit_remote("s3://my-bucket/data/sales.permafrost")
 ```
 
-### Catalog — busca em múltiplos arquivos
+### Catalog — search across multiple files
 
 ```python
 cat = pf.PermafrostCatalog("catalog.db")
-cat.register_dir("s3://meu-bucket/cold/")   # indexa metadados sem baixar
+cat.register_dir("s3://my-bucket/cold/")   # indexes metadata without downloading
 
-# Busca por nome, codec, lossless
-resultados = cat.search(name="vendas", lossless_only=True)
+# Search by name, codec, lossless
+results = cat.search(name="sales", lossless_only=True)
 
-# Relatório de custo estimado no Glacier Deep Archive
+# Estimated cost report for Glacier Deep Archive
 cat.cost_report("glacier_deep")
 
-# Verificação de integridade em massa
+# Bulk integrity check
 cat.integrity_check()
 ```
 
-### Cluster distribuído
+### Distributed Cluster
 
 ```python
 from permafrost import PermafrostClient
 
 client = PermafrostClient("http://master:8700")
-job_id = client.freeze("dados_grandes.csv", "s3://bucket/saida.permafrost")
+job_id = client.freeze("large_data.csv", "s3://bucket/output.permafrost")
 status = client.wait(job_id)
 print(status)  # {"status": "done", "ratio": 10.2, "workers_used": 4}
 ```
@@ -163,28 +163,28 @@ print(status)  # {"status": "done", "ratio": 10.2, "workers_used": 4}
 from permafrost.spark import register
 
 register(spark)
-df = spark.read.format("permafrost").load("s3://bucket/dados.permafrost")
-df.filter(df.ano == 2023).show()   # pushdown via sparse index — não lê chunks desnecessários
+df = spark.read.format("permafrost").load("s3://bucket/data.permafrost")
+df.filter(df.year == 2023).show()   # pushdown via sparse index — skips irrelevant chunks
 ```
 
 ### CLI
 
 ```bash
-# Comprimir
-permafrost freeze vendas.csv vendas.permafrost --codec lzma2 --partition-by ano
+# Compress
+permafrost freeze sales.csv sales.permafrost --codec lzma2 --partition-by year
 
-# Descomprimir com filtro
-permafrost thaw vendas.permafrost --filter '{"ano": 2023}' --output vendas_2023.csv
+# Decompress with filter
+permafrost thaw sales.permafrost --filter '{"year": 2023}' --output sales_2023.csv
 
-# Auditoria (sem descomprimir)
-permafrost audit vendas.permafrost
+# Audit (without decompressing)
+permafrost audit sales.permafrost
 
-# Verificar integridade de todos os chunks
-permafrost verify vendas.permafrost
+# Verify integrity of all chunks
+permafrost verify sales.permafrost
 
 # Catalog
 permafrost catalog register s3://bucket/cold/
-permafrost catalog search --name vendas
+permafrost catalog search --name sales
 permafrost catalog cost-report --tier glacier_deep
 ```
 
@@ -192,84 +192,84 @@ permafrost catalog cost-report --tier glacier_deep
 
 ## Benchmarks
 
-**Dataset:** 21.000.000 linhas × 13 colunas — dados corporativos reais (IDs, timestamps, categorias, floats, inteiros)  
-**Período:** 2020–2024, particionado por ano | **Medido localmente — não são estimativas.**
+**Dataset:** 21,000,000 rows × 13 columns — real corporate data (IDs, timestamps, categories, floats, integers)  
+**Period:** 2020–2024, partitioned by year | **Measured locally — not estimates.**
 
-### Compressão vs. alternativas
+### Compression vs. alternatives
 
-| Formato | Tamanho | Ratio | Tempo de escrita |
-|---------|---------|-------|-----------------|
-| CSV bruto | 2.13 GB | 1.00× | — |
+| Format | Size | Ratio | Write time |
+|--------|------|-------|------------|
+| Raw CSV | 2.13 GB | 1.00× | — |
 | Parquet + Snappy | 0.78 GB | 2.72× | 9.8s |
-| CSV + LZMA2 puro *(p9)* | ~0.50 GB | ~4.3× | **~44 min** ⚠️ |
+| CSV + plain LZMA2 *(p9)* | ~0.50 GB | ~4.3× | **~44 min** ⚠️ |
 | **Permafrost + ZSTD** | **0.35 GB** | **6.11×** | **312.6s** |
 | **Permafrost + LZMA2** | **0.33 GB** | **6.51×** | **392.3s** |
 
-> ⚠️ LZMA2 puro com preset=9 em 2.13 GB levaria ~44 min — **inviável para pipelines de dados reais**. O Permafrost entrega ratio maior em 6.5 min porque os preditores colunares reduzem a entropia antes do codec, fazendo o mesmo LZMA2 trabalhar menos e terminar mais rápido.
+> ⚠️ Plain LZMA2 at preset=9 on 2.13 GB takes ~44 min — **impractical for real data pipelines**. Permafrost delivers a higher ratio in 6.5 min because column predictors reduce entropy before the codec, so the same LZMA2 works less and finishes faster.
 
-### Leitura seletiva — Sparse Index
+### Selective Read — Sparse Index
 
 ```python
-# Ler apenas 2022 de um arquivo com 5 anos / 21M linhas de dados
-df_2022 = pf.thaw("historico.permafrost", filter={"ano": 2022})
-# 4.505.143 linhas em 7.98s — leu apenas 70.8 MB de 326.8 MB (21.7% do arquivo)
+# Read only 2022 from a file with 5 years / 21M rows of data
+df_2022 = pf.thaw("history.permafrost", filter={"year": 2022})
+# 4,505,143 rows in 7.98s — read only 70.8 MB of 326.8 MB (21.7% of the file)
 ```
 
-Com CSV, Parquet ou `.xz`, seria necessário descomprimir os 2.13 GB inteiros para acessar um único ano.
+With CSV, Parquet or `.xz`, you would need to decompress the full 2.13 GB to access a single year.
 
-### Thaw completo e Audit
+### Full Thaw and Audit
 
 ```python
-df = pf.thaw("historico.permafrost")           # 21M linhas em 29.0s
-info = pf.audit("historico.permafrost")         # 180ms para 21M linhas — sem descomprimir nada
+df = pf.thaw("history.permafrost")           # 21M rows in 29.0s
+info = pf.audit("history.permafrost")         # 180ms for 21M rows — without decompressing anything
 # {"orig_rows": 21000000, "n_chunks": 420, "codec": "lzma2", ...}
 ```
 
-### Por que o Permafrost comprime melhor que LZMA2 puro?
+### Why does Permafrost compress better than plain LZMA2?
 
-Os **preditores colunares** transformam os dados *antes* do codec — cada tipo de coluna vira um stream mais simples e regular:
+**Column predictors** transform data *before* the codec — each column type becomes a simpler, more regular stream:
 
-| Predictor | Coluna | Transformação |
-|-----------|--------|---------------|
-| `delta_zigzag` | IDs, inteiros | diferença entre consecutivos → valores pequenos perto de zero |
-| `lag1_zigzag` | floats, preços | resíduo lag-1 × escala → valores pequenos perto de zero |
-| `ts_delta_s` | timestamps | delta em segundos → inteiros pequenos |
-| `category_u8` | categorias (≤256 valores) | string → índice uint8 (1 byte por linha) |
-| `json_schema_v2` | colunas JSON | compressão de chaves por dicionário compartilhado |
+| Predictor | Column type | Transformation |
+|-----------|-------------|----------------|
+| `delta_zigzag` | IDs, integers | difference between consecutive values → small values near zero |
+| `lag1_zigzag` | floats, prices | lag-1 residual × scale → small values near zero |
+| `ts_delta_s` | timestamps | delta in seconds → small integers |
+| `category_u8` | categories (≤256 values) | string → uint8 index (1 byte per row) |
+| `json_schema_v2` | JSON columns | key compression via shared dictionary |
 
-O LZMA2 puro recebe 2.13 GB de bytes semi-aleatórios e leva 44 min. O Permafrost entrega ao mesmo LZMA2 um stream altamente estruturado — ratio 51% melhor em 6.5 min.
+Plain LZMA2 receives 2.13 GB of semi-random bytes and takes 44 min. Permafrost delivers the same LZMA2 a highly structured stream — 51% better ratio in 6.5 min.
 
-### Custo em cloud storage (S3 Glacier Deep Archive)
+### Cloud storage cost (S3 Glacier Deep Archive)
 
-| Volume original | Sem Permafrost | Com Permafrost (6.5×) | Economia/mês |
-|-----------------|----------------|----------------------|--------------|
+| Original volume | Without Permafrost | With Permafrost (6.5×) | Monthly savings |
+|-----------------|--------------------|------------------------|----------------|
 | 1 TB | $0.99 | **$0.15** | **-85%** |
 | 10 TB | $9.90 | **$1.52** | **-85%** |
 | 100 TB | $99.00 | **$15.23** | **-85%** |
 
 ---
 
-## Formato `.permafrost` v1.3
+## `.permafrost` Format v1.3
 
-O formato é auto-descritivo — legível sem documentação externa:
+The format is self-describing — readable without external documentation:
 
 ```
-[MAGIC: "PRMS" 4B]              identificação
+[MAGIC: "PRMS" 4B]              identification
 [VERSION: 1.3 2B]
 [FLAGS: bitmask 2B]             delta | quantize | chunked | predictor | index
 [CODEC_ID: 1B]                  0x01=Zstd | 0x02=LZMA2 | 0x03=ZPAQ
 [QUANT: 1B]                     0x00=lossless | 0x01=high | 0x02=medium | 0x03=low
 [N_CHUNKS: 2B]
-[SCHEMA ARROW: var]             schema completo embutido
-[PREDICTOR MANIFEST: JSON]      preditor e metadados por coluna
+[SCHEMA ARROW: var]             full schema embedded
+[PREDICTOR MANIFEST: JSON]      predictor and metadata per column
 [COMMENT: var]
 [FREEZE_TIMESTAMP: int64]
 [ORIGINAL_ROWS: uint64]
-[HEADER SHA-256: 32B]           integridade do header
+[HEADER SHA-256: 32B]           header integrity
 [CHUNK_0: u32_len + data + sha256] × N
-[SPARSE INDEX: JSON]            byte_offset de cada chunk
+[SPARSE INDEX: JSON]            byte_offset of each chunk
 [INDEX_SHA256: 32B]
-[EOF: "SMRP" 4B]                PRMS invertido
+[EOF: "SMRP" 4B]                PRMS reversed
 ```
 
 ---
@@ -278,102 +278,102 @@ O formato é auto-descritivo — legível sem documentação externa:
 
 ### Core
 
-| Função | Descrição |
-|--------|-----------|
-| `pf.freeze(df, path, ...)` | Comprime um DataFrame para arquivo `.permafrost` |
-| `pf.thaw(path, filter=None, verify=False)` | Descomprime; `filter` usa sparse index |
-| `pf.audit(path)` | Retorna metadados sem descomprimir |
+| Function | Description |
+|----------|-------------|
+| `pf.freeze(df, path, ...)` | Compress a DataFrame to a `.permafrost` file |
+| `pf.thaw(path, filter=None, verify=False)` | Decompress; `filter` uses sparse index |
+| `pf.audit(path)` | Returns metadata without decompressing |
 
 ### Streaming
 
-| Função | Descrição |
-|--------|-----------|
-| `pf.freeze_file(csv_path, out_path, chunk_rows=50_000)` | Comprime CSV grande sem carregar na memória |
-| `pf.freeze_stream(cursor_gen, out_path)` | Comprime a partir de um generator |
-| `pf.thaw_iter(path, batch_size=50_000)` | Descomprime em batches iterativos |
+| Function | Description |
+|----------|-------------|
+| `pf.freeze_file(csv_path, out_path, chunk_rows=50_000)` | Compress large CSV without loading into memory |
+| `pf.freeze_stream(cursor_gen, out_path)` | Compress from a generator |
+| `pf.thaw_iter(path, batch_size=50_000)` | Decompress in iterative batches |
 
 ### Cloud
 
-| Função | Descrição |
-|--------|-----------|
-| `pf.freeze_to(df, uri)` | Comprime e envia direto para S3/GCS/Azure |
-| `pf.thaw_from(uri, filter=None)` | Descomprime do cloud com Range Request |
-| `pf.audit_remote(uri)` | Audita arquivo remoto sem baixar tudo |
-| `pf.storage_from_uri(uri)` | Retorna o adapter de storage adequado para a URI |
+| Function | Description |
+|----------|-------------|
+| `pf.freeze_to(df, uri)` | Compress and upload directly to S3/GCS/Azure |
+| `pf.thaw_from(uri, filter=None)` | Decompress from cloud with Range Request |
+| `pf.audit_remote(uri)` | Audit remote file without downloading everything |
+| `pf.storage_from_uri(uri)` | Returns the appropriate storage adapter for the URI |
 
 ### Catalog
 
-| Classe/Método | Descrição |
-|---------------|-----------|
-| `PermafrostCatalog(db_path)` | Cria ou abre um catalog DuckDB |
-| `.register_dir(path_or_uri)` | Indexa todos os `.permafrost` de um diretório |
-| `.search(name, lossless_only, codec)` | Busca por metadados |
-| `.cost_report(tier)` | Estima custo mensal por tier de storage |
-| `.integrity_check()` | Verifica SHA-256 de todos os arquivos indexados |
+| Class/Method | Description |
+|--------------|-------------|
+| `PermafrostCatalog(db_path)` | Create or open a DuckDB catalog |
+| `.register_dir(path_or_uri)` | Index all `.permafrost` files in a directory |
+| `.search(name, lossless_only, codec)` | Search by metadata |
+| `.cost_report(tier)` | Estimate monthly cost by storage tier |
+| `.integrity_check()` | Verify SHA-256 of all indexed files |
 
 ### Cluster
 
-| Classe/Método | Descrição |
-|---------------|-----------|
-| `PermafrostMaster(host, port)` | Inicia o nó master do cluster |
-| `PermafrostWorker(master_url)` | Inicia um worker que se registra no master |
-| `PermafrostClient(master_url)` | Cliente para submeter jobs ao cluster |
-| `client.freeze(input, output)` | Submete job de freeze ao cluster |
-| `client.wait(job_id)` | Aguarda conclusão do job |
+| Class/Method | Description |
+|--------------|-------------|
+| `PermafrostMaster(host, port)` | Start the cluster master node |
+| `PermafrostWorker(master_url)` | Start a worker that registers with the master |
+| `PermafrostClient(master_url)` | Client to submit jobs to the cluster |
+| `client.freeze(input, output)` | Submit a freeze job to the cluster |
+| `client.wait(job_id)` | Wait for job completion |
 
-### Codecs disponíveis
+### Available codecs
 
-| Constante | Descrição |
-|-----------|-----------|
-| `pf.CODEC_ZSTD` | Zstandard — rápido, bom ratio |
-| `pf.CODEC_LZMA2` | LZMA2 — maior ratio, mais lento |
-| `pf.CODEC_ZPAQ` | ZPAQ — ratio máximo, muito lento |
+| Constant | Description |
+|----------|-------------|
+| `pf.CODEC_ZSTD` | Zstandard — fast, good ratio |
+| `pf.CODEC_LZMA2` | LZMA2 — higher ratio, slower |
+| `pf.CODEC_ZPAQ` | ZPAQ — maximum ratio, very slow |
 
 ---
 
-## Testes
+## Tests
 
-A suite cobre 268+ cenários incluindo edge cases, benchmarks mínimos, fidelidade total e tolerância a falhas:
+The test suite covers 268+ scenarios including edge cases, minimum benchmarks, full fidelity and fault tolerance:
 
 ```
-test_freeze_thaw.py              freeze/thaw/audit/integridade/sparse index
-test_sparse_index.py             chunked freeze, thaw seletivo, bit-rot detection
+test_freeze_thaw.py              freeze/thaw/audit/integrity/sparse index
+test_sparse_index.py             chunked freeze, selective thaw, bit-rot detection
 test_catalog.py                  register, search, thaw, cost, integrity, SQL
-test_cluster.py                  health, lifecycle, concorrência, cancelamento
-test_comprehensive.py            edge cases, todos os codecs, benchmarks mínimos
-test_fidelidade_total.py         100% linha por linha, distribuições, multi round-trip
-test_concorrencia.py             10 threads simultâneas, freeze+thaw paralelos
-test_predictor_edge_cases.py     variância zero, 256 cats, timestamps extremos
-test_cluster_fault_tolerance.py  retry, sem workers, 10 jobs paralelos
-test_formato_binario_spec.py     byte a byte do formato, SHA-256, sparse index
-test_schema_detector_stress.py   50% campos ausentes, tipos misturados, 100 campos
-test_cli_cobertura.py            todos os comandos CLI
+test_cluster.py                  health, lifecycle, concurrency, cancellation
+test_comprehensive.py            edge cases, all codecs, minimum benchmarks
+test_fidelidade_total.py         100% row-by-row, distributions, multi round-trip
+test_concorrencia.py             10 simultaneous threads, parallel freeze+thaw
+test_predictor_edge_cases.py     zero variance, 256 categories, extreme timestamps
+test_cluster_fault_tolerance.py  retry, no workers, 10 parallel jobs
+test_formato_binario_spec.py     byte-by-byte format, SHA-256, sparse index
+test_schema_detector_stress.py   50% missing fields, mixed types, 100 fields
+test_cli_cobertura.py            all CLI commands
 test_performance_regression.py   ratio ≥8×, thaw <2s, audit <50ms
 ```
 
-Status atual dos testes: [![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github&cacheSeconds=1)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
+Current test status: [![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github&cacheSeconds=1)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
 
 ---
 
-## Docker — Cluster em produção
+## Docker — Cluster in production
 
 ```bash
-# Subir cluster com 4 workers
+# Start cluster with 4 workers
 docker-compose up --scale worker=4
 
-# Build local
+# Local build
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --scale worker=2
 ```
 
-Imagens disponíveis no Docker Hub:
+Images available on Docker Hub:
 - `caua-ferreira/permafrost-master`
 - `caua-ferreira/permafrost-worker`
 
 ---
 
-## Contribuindo
+## Contributing
 
-Contribuições são bem-vindas! Veja o [guia de contribuição](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md).
+Contributions are welcome! See the [contributing guide](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md).
 
 ```bash
 git clone https://github.com/caua-ferreira/permafrost-framework
@@ -384,14 +384,14 @@ pytest tests/ -v
 
 ---
 
-## Licença
+## License
 
-Apache License 2.0 — veja [LICENSE](https://github.com/caua-ferreira/permafrost-framework/blob/main/LICENSE).
+Apache License 2.0 — see [LICENSE](https://github.com/caua-ferreira/permafrost-framework/blob/main/LICENSE).
 
 ---
 
 <div align="center">
 
-Feito com ❄️ para dados que precisam durar décadas.
+Made with ❄️ for data that needs to last decades.
 
 </div>
