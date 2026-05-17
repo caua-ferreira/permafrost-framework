@@ -8,8 +8,8 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_MASTER: caua-ferreira/permafrost-master
-  IMAGE_WORKER: caua-ferreira/permafrost-worker
+  IMAGE_MASTER: cauaferreiraa/permafrost-master
+  IMAGE_WORKER: cauaferreiraa/permafrost-worker
 
 jobs:
   build-and-push:
