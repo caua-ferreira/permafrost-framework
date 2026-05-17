@@ -35,7 +35,7 @@ class TestEntryPoint:
 
     def test_help_mentions_thaw(self):
         result = runner.invoke(app, ["--help"])
-        assert "thaw" in result.output.lower()
+        assert "unfreeze" in result.output.lower()
 
     def test_help_mentions_audit(self):
         result = runner.invoke(app, ["--help"])
@@ -50,7 +50,7 @@ class TestEntryPoint:
         assert result.exit_code == 0
 
     def test_thaw_help_exits_zero(self):
-        result = runner.invoke(app, ["thaw", "--help"])
+        result = runner.invoke(app, ["unfreeze", "--help"])
         assert result.exit_code == 0
 
     def test_audit_help_exits_zero(self):
@@ -189,7 +189,7 @@ class TestThawCommand:
         pf_path, orig = self._make_permafrost()
         out_csv = pf_path.replace(".permafrost", "_out.csv")
         try:
-            result = runner.invoke(app, ["thaw", pf_path, "--output", out_csv])
+            result = runner.invoke(app, ["unfreeze", pf_path, "--output", out_csv])
             assert result.exit_code == 0, result.output
             assert os.path.exists(out_csv)
             df2 = pd.read_csv(out_csv)
@@ -200,14 +200,14 @@ class TestThawCommand:
                 os.unlink(out_csv)
 
     def test_thaw_missing_input(self):
-        result = runner.invoke(app, ["thaw", "nonexistent.permafrost"])
+        result = runner.invoke(app, ["unfreeze", "nonexistent.permafrost"])
         assert result.exit_code != 0
 
     def test_thaw_shows_rows(self):
         pf_path, orig = self._make_permafrost(50)
         out_csv = pf_path.replace(".permafrost", "_out.csv")
         try:
-            result = runner.invoke(app, ["thaw", pf_path, "--output", out_csv])
+            result = runner.invoke(app, ["unfreeze", pf_path, "--output", out_csv])
             assert result.exit_code == 0
             assert "50" in result.output
         finally:

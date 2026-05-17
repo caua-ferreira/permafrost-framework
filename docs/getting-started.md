@@ -105,21 +105,21 @@ print(f"Comentário:   {info['comment']}")
 ### Thaw completo
 
 ```python
-df_back = pf.thaw("vendas.permafrost", verify=True)
+df_back = pf.unfreeze("vendas.permafrost", verify=True)
 print(f"{len(df_back):,} linhas recuperadas")
 ```
 
 ### Thaw seletivo — ler só 1 ano
 
 ```python
-df_2023 = pf.thaw("vendas.permafrost", filter={"ano": 2023})
+df_2023 = pf.unfreeze("vendas.permafrost", filter={"ano": 2023})
 # Lê apenas 12–31% do arquivo — não descomprime os outros anos
 ```
 
 ### Thaw por range de linhas
 
 ```python
-df_sample = pf.thaw("vendas.permafrost", row_range=(0, 9_999))
+df_sample = pf.unfreeze("vendas.permafrost", row_range=(0, 9_999))
 # Primeiras 10.000 linhas
 ```
 
@@ -129,7 +129,7 @@ df_sample = pf.thaw("vendas.permafrost", row_range=(0, 9_999))
 
 ```python
 # verify=True (padrão) verifica SHA-256 de cada chunk antes de descomprimir
-df = pf.thaw("vendas.permafrost", verify=True)
+df = pf.unfreeze("vendas.permafrost", verify=True)
 
 # Verificação standalone (sem descomprimir)
 import hashlib, struct
@@ -176,10 +176,10 @@ key = b"my-secret-key-exactly-32-bytes!!"
 pf.freeze(df, "sensitive.permafrost", key=key)
 
 # Thaw — provide the same key
-df_back = pf.thaw("sensitive.permafrost", key=key)
+df_back = pf.unfreeze("sensitive.permafrost", key=key)
 
 # Selective read works on encrypted files too
-df_2023 = pf.thaw("sensitive.permafrost", filter={"ano": 2023}, key=key)
+df_2023 = pf.unfreeze("sensitive.permafrost", filter={"ano": 2023}, key=key)
 ```
 
 Encryption is per-chunk (AES-256-GCM with unique nonce per chunk), so sparse index reads remain possible even on encrypted files. For production, use a [KMS provider](user-guide/encryption.md) instead of a raw key.
@@ -202,7 +202,7 @@ ctx = pf.PermafrostContext(
 metrics = ctx.freeze(df, "vendas_2024", partition_by="ano")
 
 # Thaw com filtro
-df_2023 = ctx.thaw("vendas_2024", filter={"ano": 2023})
+df_2023 = ctx.unfreeze("vendas_2024", filter={"ano": 2023})
 
 # Buscar no catalog
 ctx.search(name="vendas", lossless_only=True)

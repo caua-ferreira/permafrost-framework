@@ -80,19 +80,19 @@ class TestFidelidadeLinhaALinha:
         path = os.path.join(tmp, "full.permafrost")
         pf.freeze(df_referencia, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE,
                   partition_by="ano")
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert_cols_equal(df_referencia, df_b)
 
     def test_todas_colunas_zstd_lossless(self, df_referencia, tmp):
         path = os.path.join(tmp, "full_zstd.permafrost")
         pf.freeze(df_referencia, path, codec=pf.CODEC_ZSTD, quant=pf.QUANT_NONE)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert_cols_equal(df_referencia, df_b)
 
     def test_inteiros_100pct(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("id_seq", "id_rand"):
             assert np.array_equal(
@@ -103,7 +103,7 @@ class TestFidelidadeLinhaALinha:
     def test_floats_100pct_dentro_tolerancia(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path, quant=pf.QUANT_NONE)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("preco", "volume", "lat", "lon", "pct"):
             orig = df_referencia[col].values
@@ -114,7 +114,7 @@ class TestFidelidadeLinhaALinha:
     def test_categorias_100pct(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("cat_3", "cat_10", "cat_100"):
             orig = df_referencia[col].astype(str).values
@@ -125,7 +125,7 @@ class TestFidelidadeLinhaALinha:
     def test_timestamps_100pct(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("ts_min", "ts_daily"):
             orig = df_referencia[col].dt.strftime("%Y-%m-%d %H:%M").values
@@ -136,7 +136,7 @@ class TestFidelidadeLinhaALinha:
     def test_strings_100pct(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         orig = df_referencia["texto"].values
         rest = df_b["texto"].astype(str).values[:n]
@@ -154,7 +154,7 @@ class TestFidelidadeEstatistica:
         """Percentis da distribuição devem ser preservados."""
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("preco", "volume"):
             orig = df_referencia[col].values
@@ -169,7 +169,7 @@ class TestFidelidadeEstatistica:
     def test_min_max_preservados(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("id_seq", "preco", "volume"):
             orig = df_referencia[col].values
@@ -180,7 +180,7 @@ class TestFidelidadeEstatistica:
     def test_contagem_categorias_preservada(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("cat_3", "cat_10"):
             orig_counts = df_referencia[col].value_counts().sort_index()
@@ -190,7 +190,7 @@ class TestFidelidadeEstatistica:
     def test_soma_floats_preservada(self, df_referencia, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_referencia, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_referencia)
         for col in ("preco",):
             orig_sum = df_referencia[col].sum()
@@ -206,7 +206,7 @@ class TestFidelidadeEstatistica:
         df = pd.DataFrame({"x": np.round(x, 2), "y": np.round(y, 2)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         orig_corr = np.corrcoef(x, y)[0, 1]
         rest_corr = np.corrcoef(df_b["x"].astype(float), df_b["y"].astype(float))[0, 1]
         assert abs(orig_corr - rest_corr) < 0.001, \
@@ -235,7 +235,7 @@ class TestFidelidadeGrande:
         assert m["rows"] == N
         assert m["ratio"] > 5.0
 
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
 
         # Verificar amostra aleatória de 10k pontos
@@ -260,7 +260,7 @@ class TestFidelidadeGrande:
         # freeze normal
         p1 = os.path.join(tmp, "freeze.permafrost")
         pf.freeze(df, p1, codec=pf.CODEC_ZSTD)
-        df_b1 = pf.thaw(p1)
+        df_b1 = pf.unfreeze(p1)
 
         # freeze_stream com mesmos dados
         def gen():
@@ -270,7 +270,7 @@ class TestFidelidadeGrande:
 
         p2 = os.path.join(tmp, "stream.permafrost")
         pf.freeze_stream(gen(), p2, codec=pf.CODEC_ZSTD)
-        df_b2 = pf.thaw(p2)
+        df_b2 = pf.unfreeze(p2)
 
         assert len(df_b1) == len(df_b2) == N
         assert np.array_equal(df_b1["id"].values.astype(np.int64),
@@ -322,14 +322,14 @@ class TestReprodutibilidade:
         pf.freeze(df_orig, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
 
         # Primeiro thaw
-        df_r1 = pf.thaw(path, verify=True)
+        df_r1 = pf.unfreeze(path, verify=True)
 
         # Re-freeze com os dados restaurados
         path2 = os.path.join(tmp, "rt2.permafrost")
         pf.freeze(df_r1, path2, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
 
         # Segundo thaw
-        df_r2 = pf.thaw(path2, verify=True)
+        df_r2 = pf.unfreeze(path2, verify=True)
 
         n = min(len(df_orig), len(df_r2))
 
@@ -361,10 +361,10 @@ class TestReprodutibilidade:
 
         path = os.path.join(tmp, "part.permafrost")
         pf.freeze(df, path, partition_by="ano", chunk_rows=1000)
-        df_full = pf.thaw(path)
+        df_full = pf.unfreeze(path)
 
         for ano in [2020, 2021, 2022, 2023]:
-            df_filter = pf.thaw(path, filter={"ano": ano})
+            df_filter = pf.unfreeze(path, filter={"ano": ano})
             # Cada linha do resultado filtrado deve ter ano correto
             anos_result = df_filter["ano"].values.astype(int)
             assert (anos_result == ano).all(), \
@@ -379,7 +379,7 @@ class TestReprodutibilidade:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path, chunk_rows=1000)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         # A ordem deve ser preservada
         assert np.array_equal(df["seq"].values,
                                df_b["seq"].values[:N].astype(np.int32))
@@ -405,7 +405,7 @@ class TestVaultFidelidade:
     def test_vault_high_float_1_decimal(self, df_vault, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_vault, path, quant=pf.QUANT_HIGH)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_vault)
         diff = np.abs(df_vault["preco"].values -
                       df_b["preco"].values[:n].astype(float)).max()
@@ -414,7 +414,7 @@ class TestVaultFidelidade:
     def test_vault_medium_float_inteiro(self, df_vault, tmp):
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df_vault, path, quant=pf.QUANT_MEDIUM)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         n = len(df_vault)
         diff = np.abs(df_vault["preco"].values -
                       df_b["preco"].values[:n].astype(float)).max()
@@ -424,7 +424,7 @@ class TestVaultFidelidade:
         for quant, label in [(pf.QUANT_HIGH,"high"),(pf.QUANT_MEDIUM,"med"),(pf.QUANT_LOW,"low")]:
             path = os.path.join(tmp, f"v_{label}.permafrost")
             pf.freeze(df_vault, path, quant=quant)
-            df_b = pf.thaw(path)
+            df_b = pf.unfreeze(path)
             n = len(df_vault)
             assert np.array_equal(df_vault["id"].values,
                                    df_b["id"].values[:n].astype(np.int64)), \
@@ -434,7 +434,7 @@ class TestVaultFidelidade:
         for quant, label in [(pf.QUANT_HIGH,"high"),(pf.QUANT_MEDIUM,"med"),(pf.QUANT_LOW,"low")]:
             path = os.path.join(tmp, f"v_{label}.permafrost")
             pf.freeze(df_vault, path, quant=quant)
-            df_b = pf.thaw(path)
+            df_b = pf.unfreeze(path)
             n = len(df_vault)
             pct = (df_vault["cat"].astype(str).values ==
                    df_b["cat"].astype(str).values[:n]).mean() * 100
@@ -459,7 +459,7 @@ class TestFidelidadeStream:
                 })
         path = os.path.join(tmp, "s.permafrost")
         pf.freeze_stream(gen(), path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert df_b["id"].iloc[0] == 1
         assert df_b["id"].iloc[-1] == N
         assert len(df_b) == N
@@ -476,12 +476,12 @@ class TestFidelidadeStream:
                 })
         path = os.path.join(tmp, "s.permafrost")
         pf.freeze_stream(gen(), path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         # IDs devem ser únicos
         assert df_b["id"].nunique() == N, "IDs duplicados após freeze_stream"
 
     def test_thaw_iter_cobre_todos_os_dados(self, tmp):
-        """thaw_iter deve cobrir 100% dos dados sem lacunas ou duplicatas."""
+        """peek deve cobrir 100% dos dados sem lacunas ou duplicatas."""
         N = 80_000; BLOCK = 16_000
         def gen():
             for s in range(0, N, BLOCK):
@@ -494,11 +494,11 @@ class TestFidelidadeStream:
         pf.freeze_stream(gen(), path)
 
         all_ids = []
-        for batch in pf.thaw_iter(path, batch_size=8_000):
+        for batch in pf.peek(path, batch_size=8_000):
             all_ids.extend(batch["id"].tolist())
 
         assert len(all_ids) == N, f"{len(all_ids)} != {N}"
-        assert len(set(all_ids)) == N, "IDs duplicados em thaw_iter"
+        assert len(set(all_ids)) == N, "IDs duplicados em peek"
         assert min(all_ids) == 1 and max(all_ids) == N
 
 

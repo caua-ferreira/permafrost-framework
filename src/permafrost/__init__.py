@@ -28,7 +28,7 @@ Links:
     Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
-__version__  = "1.0.1"
+__version__  = "1.1.0"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 
@@ -36,7 +36,8 @@ __license__  = "Apache-2.0"
 from permafrost.codec import (
     freeze,
     freeze_append,
-    thaw,
+    unfreeze,
+    thaw,        # deprecated alias → unfreeze
     audit,
     # Codec IDs
     CODEC_ZSTD,
@@ -72,7 +73,8 @@ from permafrost.schema_detector import (
 from permafrost.chunk_mode import (
     freeze_stream,
     freeze_file,
-    thaw_iter,
+    peek,
+    thaw_iter,   # deprecated alias → peek
 )
 
 # ── Encryption ────────────────────────────────────────────────────────────────
@@ -131,7 +133,8 @@ from permafrost.cluster import (
 
 __all__ = [
     # Core
-    "freeze", "thaw", "audit",
+    "freeze", "unfreeze", "audit",
+    "thaw",          # deprecated alias
     # Codecs
     "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
     # Quant levels
@@ -142,7 +145,8 @@ __all__ = [
     # Schema
     "SchemaDetector", "DataType", "FieldKind",
     # Chunk mode
-    "freeze_stream", "freeze_file", "thaw_iter",
+    "freeze_stream", "freeze_file", "peek",
+    "thaw_iter",     # deprecated alias
     # Context (high-level API)
     "PermafrostContext",
     # Catalog

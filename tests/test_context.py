@@ -205,7 +205,7 @@ class TestThaw:
     def test_thaw_roundtrip(self, frozen, tmp):
         path, df_orig = frozen
         ctx = PermafrostContext()
-        df_back = ctx.thaw(path)
+        df_back = ctx.unfreeze(path)
         assert len(df_back) == len(df_orig)
         assert set(df_back.columns) == set(df_orig.columns)
 
@@ -213,14 +213,14 @@ class TestThaw:
         ctx = PermafrostContext()
         out = os.path.join(tmp, "partitioned.permafrost")
         ctx.freeze(sample_df, out, partition_by="ano", chunk_rows=100)
-        df_back = ctx.thaw(out, filter={"ano": 2022})
+        df_back = ctx.unfreeze(out, filter={"ano": 2022})
         assert len(df_back) > 0
         assert (df_back["ano"] == 2022).all()
 
     def test_thaw_auto_extension(self, frozen, tmp):
         path, df_orig = frozen
         ctx = PermafrostContext(storage=tmp)
-        df_back = ctx.thaw("data")  # without .permafrost
+        df_back = ctx.unfreeze("data")  # without .permafrost
         assert len(df_back) == len(df_orig)
 
 

@@ -41,7 +41,7 @@ cat.search_chunks(dataset_name: str, part_key: str = None) -> pd.DataFrame
 ## Thaw via catalog
 
 ```python
-cat.thaw(
+cat.unfreeze(
     name: str,
     filter: dict = None,
     row_range: tuple = None,

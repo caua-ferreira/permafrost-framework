@@ -143,7 +143,7 @@ def test_worker_command_with_id():
     )
 
 
-@pytest.mark.parametrize("cmd", ["freeze", "thaw", "audit", "verify", "catalog"])
+@pytest.mark.parametrize("cmd", ["freeze", "unfreeze", "thaw", "audit", "verify", "catalog"])
 def test_cli_commands_delegate_to_app(cmd):
     mock_app = MagicMock()
 

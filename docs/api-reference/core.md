@@ -36,7 +36,7 @@ Comprime um DataFrame para o formato `.permafrost`.
 
 ---
 
-### `thaw()`
+### `unfreeze()`
 
 ```python
 permafrost.thaw(
@@ -121,10 +121,10 @@ permafrost.freeze_file(
 ) -> dict
 ```
 
-### `thaw_iter()`
+### `peek()`
 
 ```python
-permafrost.thaw_iter(
+permafrost.peek(
     path: str,
     verify: bool = True,
     filter: dict | None = None,

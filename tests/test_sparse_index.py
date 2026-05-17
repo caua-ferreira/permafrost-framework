@@ -92,24 +92,24 @@ class TestThawCompleto:
     def test_linhas(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path, partition_by="ano")
-        assert len(pf.thaw(path, verify=True)) == len(time_df)
+        assert len(pf.unfreeze(path, verify=True)) == len(time_df)
 
     def test_colunas(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path)
-        assert set(pf.thaw(path).columns) == set(time_df.columns)
+        assert set(pf.unfreeze(path).columns) == set(time_df.columns)
 
     def test_ids_exatos(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path, partition_by="ano")
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         assert np.array_equal(time_df["id"].values,
                                df_t["id"].values[:len(time_df)].astype(np.int64))
 
     def test_categorias_exatas(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path)
-        df_t = pf.thaw(path)
+        df_t = pf.unfreeze(path)
         for col in ("status","regiao"):
             assert (time_df[col].astype(str).values ==
                     df_t[col].astype(str).values[:len(time_df)]).mean() == 1.0
@@ -120,7 +120,7 @@ class TestThawSeletivo:
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path, partition_by="ano", chunk_rows=2000)
         ano  = sorted(time_df["ano"].unique())[0]
-        df_f = pf.thaw(path, filter={"ano": ano})
+        df_f = pf.unfreeze(path, filter={"ano": ano})
         assert 0 < len(df_f) < len(time_df)
 
     def test_filter_le_menos_que_full(self, time_df, tmp_dir):
@@ -136,19 +136,19 @@ class TestThawSeletivo:
     def test_row_range(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path, chunk_rows=2000)
-        assert len(pf.thaw(path, row_range=(0, 1999))) <= 2000
+        assert len(pf.unfreeze(path, row_range=(0, 1999))) <= 2000
 
     def test_filter_vazio_retorna_vazio(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(time_df, path, partition_by="ano", chunk_rows=2000)
-        assert len(pf.thaw(path, filter={"ano": 9999})) == 0
+        assert len(pf.unfreeze(path, filter={"ano": 9999})) == 0
 
 
 class TestIntegridadeChunks:
     def test_arquivo_correto_passa(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
         pf.freeze(time_df, path)
-        assert len(pf.thaw(path, verify=True)) == len(time_df)
+        assert len(pf.unfreeze(path, verify=True)) == len(time_df)
 
     def test_chunk_corrompido_detectado(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
@@ -159,7 +159,7 @@ class TestIntegridadeChunks:
         offset = info["index_entries"][0]["byte_offset"]
         with open(corrupt,"r+b") as f: f.seek(offset+100); f.write(b"\x00"*16)
         with pytest.raises(ValueError, match="[Cc]orrompido|SHA"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_truncado_detectado(self, time_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
@@ -167,7 +167,7 @@ class TestIntegridadeChunks:
         pf.freeze(time_df, path)
         sz = os.path.getsize(path)
         with open(path,"rb") as s, open(trunc,"wb") as d: d.write(s.read(sz//2))
-        with pytest.raises(ValueError): pf.thaw(trunc)
+        with pytest.raises(ValueError): pf.unfreeze(trunc)
 
 
 if __name__ == "__main__":

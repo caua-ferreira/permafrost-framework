@@ -114,7 +114,7 @@ class TestAutoDetection:
 class TestExplicitPredictors:
     def test_float32_explicit_round_trip(self, float_df, tmp):
         m = pf.freeze(float_df, tmp, predictors={"price": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         # Price restored to float32 precision
         orig = float_df["price"].to_numpy()
         restored = df_back["price"].to_numpy()
@@ -123,7 +123,7 @@ class TestExplicitPredictors:
 
     def test_float16_explicit_round_trip(self, float_df, tmp):
         pf.freeze(float_df, tmp, predictors={"quantity": pf.PRED_FLOAT16})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         orig = float_df["quantity"].to_numpy()
         expected = orig.astype(np.float16).astype(np.float64)
         np.testing.assert_allclose(df_back["quantity"].to_numpy(), expected, rtol=0, atol=0)
@@ -131,17 +131,17 @@ class TestExplicitPredictors:
     def test_multiple_cols_predictors(self, float_df, tmp):
         pf.freeze(float_df, tmp,
                   predictors={"price": pf.PRED_FLOAT32, "quantity": pf.PRED_FLOAT16})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         assert len(df_back) == len(float_df)
 
     def test_unknown_col_in_predictors_is_ignored(self, float_df, tmp):
         pf.freeze(float_df, tmp, predictors={"nonexistent_col": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         assert len(df_back) == len(float_df)
 
     def test_float32_other_cols_unaffected(self, float_df, tmp):
         pf.freeze(float_df, tmp, predictors={"price": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         # lat and score should be restored without float32 truncation
         assert len(df_back["lat"]) == len(float_df["lat"])
 
@@ -157,12 +157,12 @@ class TestQuantHighFloat32:
         # Both produce valid readable files
         assert m_none["rows"] == len(float_df)
         assert m_high["rows"] == len(float_df)
-        df_back = pf.thaw(path_high)
+        df_back = pf.unfreeze(path_high)
         assert len(df_back) == len(float_df)
 
     def test_quant_high_round_trip(self, float_df, tmp):
         pf.freeze(float_df, tmp, quant=pf.QUANT_HIGH)
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         assert len(df_back) == len(float_df)
         for col in ["price", "quantity", "discount"]:
             orig = float_df[col].to_numpy()
@@ -172,7 +172,7 @@ class TestQuantHighFloat32:
 
     def test_quant_high_special_cols_preserved(self, float_df, tmp):
         pf.freeze(float_df, tmp, quant=pf.QUANT_HIGH)
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         # lat and score use lag1, not float32 — values should be close but may differ
         assert len(df_back["lat"]) == len(float_df["lat"])
 
@@ -190,7 +190,7 @@ class TestQuantLowFloat16:
 
     def test_quant_low_round_trip(self, float_df, tmp):
         pf.freeze(float_df, tmp, quant=pf.QUANT_LOW)
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         for col in ["price", "quantity"]:
             orig = float_df[col].to_numpy()
             restored = df_back[col].to_numpy()
@@ -270,33 +270,33 @@ class TestEdgeCases:
         # NaN → 0.0 via fillna(0), consistent with all other predictors
         df = pd.DataFrame({"v": [1.0, float("nan"), 3.0, float("nan")]})
         pf.freeze(df, tmp, predictors={"v": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         assert df_back["v"].iloc[1] == 0.0
         assert df_back["v"].iloc[3] == 0.0
 
     def test_float16_overflow_becomes_inf(self, tmp):
         df = pd.DataFrame({"v": [1.0, 70000.0, 3.0]})  # 70000 > float16 max (65504)
         pf.freeze(df, tmp, predictors={"v": pf.PRED_FLOAT16})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         assert np.isinf(df_back["v"].iloc[1])
 
     def test_float32_zero(self, tmp):
         df = pd.DataFrame({"v": [0.0] * 100})
         pf.freeze(df, tmp, predictors={"v": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         np.testing.assert_array_equal(df_back["v"].to_numpy(), 0.0)
 
     def test_float32_works_with_encryption(self, tmp):
         key = bytes(range(32))
         df = pd.DataFrame({"v": RNG.uniform(0, 100, 200)})
         pf.freeze(df, tmp, predictors={"v": pf.PRED_FLOAT32}, key=key)
-        df_back = pf.thaw(tmp, key=key)
+        df_back = pf.unfreeze(tmp, key=key)
         expected = df["v"].to_numpy().astype(np.float32).astype(np.float64)
         np.testing.assert_allclose(df_back["v"].to_numpy(), expected, rtol=0, atol=0)
 
     def test_float32_with_multiple_chunks(self, tmp):
         df = pd.DataFrame({"v": RNG.uniform(0, 1000, 5000)})
         pf.freeze(df, tmp, chunk_rows=1000, predictors={"v": pf.PRED_FLOAT32})
-        df_back = pf.thaw(tmp)
+        df_back = pf.unfreeze(tmp)
         expected = df["v"].to_numpy().astype(np.float32).astype(np.float64)
         np.testing.assert_allclose(df_back["v"].to_numpy(), expected, rtol=0, atol=0)

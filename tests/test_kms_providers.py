@@ -257,7 +257,7 @@ class TestEnvelopeEncryptionIntegration:
         with patch.dict(sys.modules, {"boto3": mock_boto3}):
             pf.freeze(sample_df, path, codec=pf.CODEC_ZSTD,
                       key=AWSKMSProvider(self.ARN))
-            df_back = pf.thaw(path, key=AWSKMSProvider(self.ARN))
+            df_back = pf.unfreeze(path, key=AWSKMSProvider(self.ARN))
         assert len(df_back) == 200
 
     def test_edek_stored_in_file(self, sample_df, tmp_path):
@@ -285,18 +285,18 @@ class TestEnvelopeEncryptionIntegration:
                 pf.freeze(sample_df, path, codec=pf.CODEC_ZSTD,
                           key=GCPKMSProvider(self.GCP_KEY))
             pf_thaw_key = GCPKMSProvider(self.GCP_KEY)
-            df_back = pf.thaw(path, key=pf_thaw_key)
+            df_back = pf.unfreeze(path, key=pf_thaw_key)
         assert len(df_back) == 200
 
     def test_aws_stream_round_trip(self, tmp_path):
-        from permafrost import freeze_stream, thaw_iter
+        from permafrost import freeze_stream, peek
         path = str(tmp_path / "stream_aws.permafrost")
         chunks = [pd.DataFrame({"v": range(i * 50, (i + 1) * 50)}) for i in range(4)]
         mock_boto3, _ = _mock_boto3(KEY_32, FAKE_EDK)
         with patch.dict(sys.modules, {"boto3": mock_boto3}):
             freeze_stream(iter(chunks), path, key=AWSKMSProvider(self.ARN))
             total = sum(
-                len(df) for df in thaw_iter(path, key=AWSKMSProvider(self.ARN))
+                len(df) for df in peek(path, key=AWSKMSProvider(self.ARN))
             )
         assert total == 200
 
@@ -306,14 +306,14 @@ class TestEnvelopeEncryptionIntegration:
         with patch.dict(sys.modules, {"boto3": mock_boto3}):
             pf.freeze(sample_df, path, key=AWSKMSProvider(self.ARN))
         with pytest.raises(ValueError, match="encrypted"):
-            pf.thaw(path)
+            pf.unfreeze(path)
 
     def test_data_fidelity_aws(self, sample_df, tmp_path):
         path = str(tmp_path / "fid_aws.permafrost")
         mock_boto3, _ = _mock_boto3(KEY_32, FAKE_EDK)
         with patch.dict(sys.modules, {"boto3": mock_boto3}):
             pf.freeze(sample_df, path, key=AWSKMSProvider(self.ARN))
-            df_back = pf.thaw(path, key=AWSKMSProvider(self.ARN))
+            df_back = pf.unfreeze(path, key=AWSKMSProvider(self.ARN))
         assert list(df_back.columns) == list(sample_df.columns)
         assert len(df_back) == len(sample_df)
 
@@ -326,7 +326,7 @@ class TestEnvelopeEncryptionIntegration:
             info = pf.audit(path)
             assert info["n_chunks"] == 3
             assert info["encrypted"] is True
-            df_back = pf.thaw(path, key=AWSKMSProvider(self.ARN))
+            df_back = pf.unfreeze(path, key=AWSKMSProvider(self.ARN))
         assert len(df_back) == 3_000
 
 

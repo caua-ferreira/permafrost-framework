@@ -130,18 +130,18 @@ class TestCLIThaw:
 
     def test_thaw_imprime_dados(self, pf_file, tmp):
         pf_path, N = pf_file
-        rc, out, err = run_cli("thaw", pf_path)
+        rc, out, err = run_cli("unfreeze", pf_path)
         # Deve imprimir algo (pode ser CSV ou JSON)
         assert rc == 0 or len(out) > 0 or len(err) > 0
 
     def test_thaw_arquivo_inexistente_exit_1(self, tmp):
-        rc, _, _ = run_cli("thaw", "/nao/existe.permafrost")
+        rc, _, _ = run_cli("unfreeze", "/nao/existe.permafrost")
         assert rc != 0
 
     def test_thaw_arquivo_invalido_exit_1(self, tmp):
         fake = os.path.join(tmp, "fake.permafrost")
         open(fake, "w").write("nao e um permafrost valido")
-        rc, _, _ = run_cli("thaw", fake)
+        rc, _, _ = run_cli("unfreeze", fake)
         assert rc != 0
 
 

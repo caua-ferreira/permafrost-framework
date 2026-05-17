@@ -169,7 +169,7 @@ class TestThawSchemaOverride:
             pa.field("price",      pa.float64()),
             pa.field("new_score",  pa.float64()),  # doesn't exist in file
         ])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert list(df.columns) == ["id", "price", "new_score"]
         assert all(np.isnan(df["new_score"]))
 
@@ -178,7 +178,7 @@ class TestThawSchemaOverride:
             pa.field("id",    pa.int64()),
             pa.field("price", pa.float64()),
         ])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert set(df.columns) == {"id", "price"}
 
     def test_type_upcast(self, frozen):
@@ -186,23 +186,23 @@ class TestThawSchemaOverride:
             pa.field("qty",   pa.float64()),  # was int → upcast to float
             pa.field("price", pa.float64()),
         ])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert df["qty"].dtype == np.float64
 
     def test_type_downcast(self, frozen):
         schema = pa.schema([
             pa.field("price", pa.float32()),  # was float64 → downcast
         ])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert df["price"].dtype == np.float32
 
     def test_row_count_unchanged(self, frozen, base_df):
         schema = pa.schema([pa.field("id", pa.int64())])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert len(df) == len(base_df)
 
     def test_no_schema_override_is_identity(self, frozen, base_df):
-        df = pf.thaw(frozen)
+        df = pf.unfreeze(frozen)
         assert set(df.columns) == set(base_df.columns)
 
     def test_add_multiple_new_columns(self, frozen):
@@ -212,7 +212,7 @@ class TestThawSchemaOverride:
             pa.field("col2", pa.string()),
             pa.field("col3", pa.int64()),
         ])
-        df = pf.thaw(frozen, schema_override=schema)
+        df = pf.unfreeze(frozen, schema_override=schema)
         assert all(np.isnan(df["col1"]))
         assert all(x is None for x in df["col2"])
         assert list(df["col3"]) == [0] * len(df)
@@ -224,7 +224,7 @@ class TestThawSchemaOverride:
             pa.field("id",    pa.int64()),
             pa.field("price", pa.float32()),
         ])
-        df = pf.thaw(path, filter={"category": "A"}, schema_override=schema)
+        df = pf.unfreeze(path, filter={"category": "A"}, schema_override=schema)
         assert set(df.columns) == {"id", "price"}
         assert df["price"].dtype == np.float32
 
@@ -236,12 +236,12 @@ class TestThawSchemaOverride:
             pa.field("id",    pa.int64()),
             pa.field("price", pa.float32()),
         ])
-        df = pf.thaw(path, key=key, schema_override=schema)
+        df = pf.unfreeze(path, key=key, schema_override=schema)
         assert "price" in df.columns
         assert df["price"].dtype == np.float32
 
 
-# ── Integration: thaw_iter() with schema_override ────────────────────────────
+# ── Integration: peek() with schema_override ────────────────────────────
 
 class TestThawIterSchemaOverride:
     def test_each_chunk_gets_schema(self, frozen):
@@ -249,7 +249,7 @@ class TestThawIterSchemaOverride:
             pa.field("id",    pa.int64()),
             pa.field("extra", pa.float64()),  # new column
         ])
-        chunks = list(pf.thaw_iter(frozen, schema_override=schema))
+        chunks = list(pf.peek(frozen, schema_override=schema))
         assert len(chunks) > 0
         for chunk in chunks:
             assert list(chunk.columns) == ["id", "extra"]
@@ -257,7 +257,7 @@ class TestThawIterSchemaOverride:
 
     def test_total_rows_preserved(self, frozen, base_df):
         schema = pa.schema([pa.field("id", pa.int64())])
-        total = sum(len(c) for c in pf.thaw_iter(frozen, schema_override=schema))
+        total = sum(len(c) for c in pf.peek(frozen, schema_override=schema))
         assert total == len(base_df)
 
 
@@ -333,10 +333,10 @@ class TestAuditStoredSchema:
 
 class TestRegressionNoSchemaOverride:
     def test_thaw_without_override(self, frozen, base_df):
-        df = pf.thaw(frozen)
+        df = pf.unfreeze(frozen)
         assert len(df) == len(base_df)
         assert set(df.columns) == set(base_df.columns)
 
     def test_thaw_iter_without_override(self, frozen, base_df):
-        total = sum(len(c) for c in pf.thaw_iter(frozen))
+        total = sum(len(c) for c in pf.peek(frozen))
         assert total == len(base_df)

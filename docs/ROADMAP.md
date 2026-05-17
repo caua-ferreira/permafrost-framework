@@ -18,7 +18,7 @@ Tudo abaixo está implementado, testado e publicado no PyPI.
 | `freeze()` / `thaw()` / `audit()` | ✅ | API pública estável |
 | Bit-rot detection | ✅ | SHA-256 verificado antes de qualquer decompress |
 | Sparse index + partial thaw | ✅ | `thaw(path, filter={col: val})` lê só chunks relevantes |
-| Chunk mode (streaming) | ✅ | `freeze_file()`, `freeze_stream()`, `thaw_iter()` |
+| Chunk mode (streaming) | ✅ | `freeze_file()`, `freeze_stream()`, `peek()` |
 | PermafrostCatalog (DuckDB) | ✅ | Thread-safe, search por tags/período/schema |
 | StorageAdapters | ✅ | S3, GCS, Azure, Local — `freeze_to()` / `thaw_from()` |
 | Cluster (FastAPI) | ✅ | PermafrostMaster + PermafrostWorker + PermafrostClient |
@@ -122,7 +122,7 @@ Todas as features de ecossistema estão implementadas.
 - [x] Spec formal `.permafrost` publicada como RFC draft (`docs/format-spec.md`) ✅
 - [x] `PermafrostContext` — API de alto nível unificando catalog + storage + cluster ✅
   - `ctx.freeze(df, name)` — freeze + upload + catalog register em uma chamada
-  - `ctx.thaw(name, filter=...)` — download + thaw
+  - `ctx.unfreeze(name, filter=...)` — download + thaw
   - `ctx.audit(name)` — range-request audit remoto
   - `ctx.search(...)`, `ctx.cost_report()`, `ctx.stats()`, `ctx.sql()` — delegados ao catalog
   - `ctx.freeze_async()` + `ctx.wait()` — integração com cluster distribuído

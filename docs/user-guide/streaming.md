@@ -81,21 +81,21 @@ pf.freeze_stream(
 
 ---
 
-## thaw_iter() — iterar sem carregar tudo
+## peek() — iterar sem carregar tudo
 
 ```python
 import permafrost as pf
 
 # Iterar chunk por chunk (RAM = 1 chunk de cada vez)
-for chunk_df in pf.thaw_iter("arquivo.permafrost"):
+for chunk_df in pf.peek("arquivo.permafrost"):
     processar(chunk_df)
 
 # Iterar em batches de tamanho fixo
-for batch in pf.thaw_iter("arquivo.permafrost", batch_size=25_000):
+for batch in pf.peek("arquivo.permafrost", batch_size=25_000):
     print(f"Batch com {len(batch):,} linhas")
 
 # Iterar com filtro — lê só chunks relevantes
-for batch in pf.thaw_iter("arquivo.permafrost",
+for batch in pf.peek("arquivo.permafrost",
                             filter={"ano": 2024},
                             batch_size=50_000):
     processar_2024(batch)

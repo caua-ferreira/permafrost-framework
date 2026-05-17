@@ -61,7 +61,7 @@ print(df[["name", "codec", "rows", "mb", "partition_col"]])
 
 ```python
 # O catalog encontra o arquivo e roteia o thaw automaticamente
-df = cat.thaw("vendas_2023", filter={"ano": 2023})
+df = cat.unfreeze("vendas_2023", filter={"ano": 2023})
 ```
 
 ---

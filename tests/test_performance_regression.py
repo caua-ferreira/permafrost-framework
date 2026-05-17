@@ -136,13 +136,13 @@ class TestVelocidadeThaw:
 
     def test_thaw_lzma2_80k_em_menos_de_2s(self, frozen_lzma):
         t0 = time.time()
-        pf.thaw(frozen_lzma, verify=True)
+        pf.unfreeze(frozen_lzma, verify=True)
         elapsed = time.time() - t0
         assert elapsed < 2.0, f"thaw() LZMA2 demorou {elapsed:.3f}s (limite: 2s)"
 
     def test_thaw_zstd_80k_em_menos_de_500ms(self, frozen_zstd):
         t0 = time.time()
-        pf.thaw(frozen_zstd, verify=True)
+        pf.unfreeze(frozen_zstd, verify=True)
         elapsed = time.time() - t0
         assert elapsed < 0.5, f"thaw() Zstd demorou {elapsed:.3f}s (limite: 500ms)"
 
@@ -151,11 +151,11 @@ class TestVelocidadeThaw:
         anos = sorted(ref_df["ano"].unique())[:2]
 
         t0_full = time.time()
-        pf.thaw(frozen_lzma, verify=False)
+        pf.unfreeze(frozen_lzma, verify=False)
         t_full = time.time() - t0_full
 
         t0_sel = time.time()
-        pf.thaw(frozen_lzma, filter={"ano": anos[0]}, verify=False)
+        pf.unfreeze(frozen_lzma, filter={"ano": anos[0]}, verify=False)
         t_sel = time.time() - t0_sel
 
         assert t_sel < t_full, \
@@ -233,7 +233,7 @@ class TestRAMStreaming:
         assert peak_mb < 1024, f"RAM pico: {peak_mb:.1f}MB (limite: 1024MB — 1 chunk Python)"
 
     def test_thaw_iter_ram_constante(self, tmp):
-        """thaw_iter deve usar RAM próxima ao tamanho de 1 batch."""
+        """peek deve usar RAM próxima ao tamanho de 1 batch."""
         import tracemalloc
         N = 200_000; CHUNK = 40_000
         def gen():
@@ -245,14 +245,14 @@ class TestRAMStreaming:
 
         tracemalloc.start()
         total = 0
-        for batch in pf.thaw_iter(path, batch_size=20_000):
+        for batch in pf.peek(path, batch_size=20_000):
             total += len(batch)
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
         assert total == N
         peak_mb = peak / 1e6
-        assert peak_mb < 500, f"RAM pico thaw_iter: {peak_mb:.1f}MB"
+        assert peak_mb < 500, f"RAM pico peek: {peak_mb:.1f}MB"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

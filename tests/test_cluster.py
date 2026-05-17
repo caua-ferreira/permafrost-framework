@@ -124,7 +124,7 @@ class TestJobLifecycle:
         client.wait(job_id, timeout=60)
         chunks = sorted([f for f in os.listdir(tmp) if "t6" in f and ".chunk_" in f])
         assert len(chunks) > 0
-        df_c = pf.thaw(os.path.join(tmp, chunks[0]), verify=True)
+        df_c = pf.unfreeze(os.path.join(tmp, chunks[0]), verify=True)
         assert len(df_c) > 0
 
 

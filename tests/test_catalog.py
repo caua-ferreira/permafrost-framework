@@ -114,16 +114,16 @@ class TestSearch:
 
 class TestCatalogThaw:
     def test_thaw_full(self, cat):
-        df = cat.thaw("vendas_2022")
+        df = cat.unfreeze("vendas_2022")
         assert len(df) == 10000
 
     def test_thaw_com_filter(self, cat):
-        df = cat.thaw("vendas_2023", filter={"ano": 2023})
+        df = cat.unfreeze("vendas_2023", filter={"ano": 2023})
         assert len(df) > 0 and len(df) <= 12000
 
     def test_thaw_desconhecido_lanca_erro(self, cat):
         with pytest.raises(KeyError, match="nao_existe"):
-            cat.thaw("nao_existe")
+            cat.unfreeze("nao_existe")
 
 
 class TestIntegrityCheck:

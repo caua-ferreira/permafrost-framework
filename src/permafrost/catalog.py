@@ -6,7 +6,7 @@ Features:
   - register(path)        → indexa um arquivo lendo apenas header+footer
   - register_dir(dir)     → registra todos os .permafrost de um diretório
   - search(...)           → query SQL-like com filtros
-  - thaw(...)             → thaw seletivo usando o catalog como roteador
+  - unfreeze(...)         → leitura seletiva usando o catalog como roteador
   - cost_report()         → custo estimado por tier de storage
   - integrity_check()     → verifica SHA-256 de todos os arquivos registrados
   - stats()               → métricas gerais do catalog
@@ -19,7 +19,7 @@ import numpy as np
 
 # Importar o codec
 
-from permafrost.codec import audit as pf_audit, thaw as pf_thaw
+from permafrost.codec import audit as pf_audit, unfreeze as pf_thaw
 
 # ── STORAGE PRICING ($/GB/mês) ────────────────────────────────────────────────
 STORAGE_PRICES = {
@@ -282,11 +282,11 @@ class PermafrostCatalog:
         with self._lock:
             return self.con.execute(sql, params).df()
 
-    # ── THAW via CATALOG ──────────────────────────────────────────────────────
-    def thaw(self, name: str, filter: dict = None, row_range: tuple = None,
-             verify: bool = True) -> pd.DataFrame:
+    # ── UNFREEZE via CATALOG ──────────────────────────────────────────────────
+    def unfreeze(self, name: str, filter: dict = None, row_range: tuple = None,
+                 verify: bool = True) -> pd.DataFrame:
         """
-        Encontra o dataset pelo nome e executa thaw com seleção via sparse index.
+        Encontra o dataset pelo nome e executa leitura seletiva via sparse index.
         """
         with self._lock:
             result = self.con.execute(
@@ -302,12 +302,21 @@ class PermafrostCatalog:
             # Garantir que o filtro usa a coluna correta
             pass
 
-        print(f"  thaw: {os.path.basename(path)}", end="")
+        print(f"  unfreeze: {os.path.basename(path)}", end="")
         t0 = time.time()
         df = pf_thaw(path, verify=verify, filter=filter, row_range=row_range)
         tt = time.time() - t0
         print(f" → {len(df):,} linhas em {tt:.3f}s")
         return df
+
+    def thaw(self, *args, **kwargs):
+        """Deprecated: use ``unfreeze()`` instead. Will be removed in v2.0."""
+        import warnings
+        warnings.warn(
+            "PermafrostCatalog.thaw() is deprecated. Use unfreeze() instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+        return self.unfreeze(*args, **kwargs)
 
     # ── COST REPORT ───────────────────────────────────────────────────────────
     def cost_report(self, tier: str = 'glacier_deep') -> pd.DataFrame:

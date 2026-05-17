@@ -260,14 +260,14 @@ class PermafrostContext:
         """
         return self.client.wait(job_id, token=self.token, poll_interval=poll_interval)
 
-    # ── THAW ──────────────────────────────────────────────────────────────────
+    # ── UNFREEZE ──────────────────────────────────────────────────────────────
 
-    def thaw(self, name: str, **kwargs):
+    def unfreeze(self, name: str, **kwargs):
         """Descomprime um arquivo do storage configurado.
 
         Args:
             name: Nome do arquivo (com ou sem ``.permafrost``).
-            **kwargs: Parâmetros extras para :func:`~permafrost.thaw`
+            **kwargs: Parâmetros extras para :func:`~permafrost.unfreeze`
                 (``filter``, ``verify``, ``key``, etc.).
 
         Returns:
@@ -275,8 +275,8 @@ class PermafrostContext:
 
         Examples::
 
-            df = ctx.thaw("vendas_2024")
-            df_2023 = ctx.thaw("vendas_2024", filter={"ano": 2023})
+            df = ctx.unfreeze("vendas_2024")
+            df_2023 = ctx.unfreeze("vendas_2024", filter={"ano": 2023})
         """
         from permafrost.storage import thaw_from
         uri = self._resolve_uri(name)
@@ -284,6 +284,15 @@ class PermafrostContext:
         if key is not None:
             kwargs["key"] = key
         return thaw_from(uri, adapter=self.adapter, **kwargs)
+
+    def thaw(self, *args, **kwargs):
+        """Deprecated: use ``unfreeze()`` instead. Will be removed in v2.0."""
+        import warnings
+        warnings.warn(
+            "PermafrostContext.thaw() is deprecated. Use unfreeze() instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+        return self.unfreeze(*args, **kwargs)
 
     # ── AUDIT ─────────────────────────────────────────────────────────────────
 

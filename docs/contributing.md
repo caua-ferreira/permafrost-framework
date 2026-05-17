@@ -38,7 +38,7 @@ src/permafrost/
     __init__.py          # Public API exports
     codec.py             # freeze(), thaw(), audit(), predictors
     catalog.py           # PermafrostCatalog (DuckDB)
-    chunk_mode.py        # freeze_stream(), freeze_file(), thaw_iter()
+    chunk_mode.py        # freeze_stream(), freeze_file(), peek()
     cli.py               # CLI (typer + rich)
     cluster.py           # Master, Worker, Client
     schema_detector.py   # SchemaDetector, DataType
@@ -88,7 +88,7 @@ Permafrost follows [Semantic Versioning 2.0.0](https://semver.org/).
 Everything exported from `permafrost.__all__` is public API:
 
 - `freeze()`, `thaw()`, `audit()`, `freeze_to()`, `thaw_from()`, `audit_remote()`
-- `freeze_file()`, `freeze_stream()`, `thaw_iter()`
+- `freeze_file()`, `freeze_stream()`, `peek()`
 - `PermafrostContext`, `PermafrostCatalog`
 - `LocalAdapter`, `S3Adapter`, `GCSAdapter`, `AzureAdapter`
 - `PermafrostMaster`, `PermafrostWorker`, `PermafrostClient`

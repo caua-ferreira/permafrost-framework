@@ -49,7 +49,7 @@ class TestThawConcorrente:
 
         def worker(tid):
             try:
-                df_b = pf.thaw(path, verify=True)
+                df_b = pf.unfreeze(path, verify=True)
                 resultados[tid] = len(df_b)
             except Exception as e:
                 erros.append((tid, str(e)))
@@ -71,7 +71,7 @@ class TestThawConcorrente:
 
         def worker(ano):
             try:
-                df_b = pf.thaw(path, filter={"ano": ano}, verify=True)
+                df_b = pf.unfreeze(path, filter={"ano": ano}, verify=True)
                 results[ano] = len(df_b)
             except Exception as e:
                 erros.append((ano, str(e)))
@@ -110,7 +110,7 @@ class TestThawConcorrente:
 
         def do_full():
             try:
-                df_b = pf.thaw(path, verify=True)
+                df_b = pf.unfreeze(path, verify=True)
                 r_full["rows"] = len(df_b)
             except Exception as e:
                 erros.append(f"full: {e}")
@@ -118,7 +118,7 @@ class TestThawConcorrente:
         def do_filter():
             try:
                 ano  = sorted(df["ano"].unique())[0]
-                df_b = pf.thaw(path, filter={"ano": ano})
+                df_b = pf.unfreeze(path, filter={"ano": ano})
                 r_filter["rows"] = len(df_b)
             except Exception as e:
                 erros.append(f"filter: {e}")
@@ -139,7 +139,7 @@ class TestThawConcorrente:
 
         def worker():
             try:
-                df_b = pf.thaw(path)
+                df_b = pf.unfreeze(path)
                 all_sums.append(float(df_b["total"].sum()))
             except Exception as e:
                 erros.append(str(e))
@@ -218,10 +218,10 @@ class TestFreezeConcorrente:
 
         def do_thaw():
             try:
-                df_b = pf.thaw(path_b, verify=True)
+                df_b = pf.unfreeze(path_b, verify=True)
                 res_thaw["rows"] = len(df_b)
             except Exception as e:
-                erros.append(f"thaw: {e}")
+                erros.append(f"unfreeze: {e}")
 
         t1 = threading.Thread(target=do_freeze)
         t2 = threading.Thread(target=do_thaw)
@@ -371,7 +371,7 @@ class TestConsistenciaSOBCarga:
         path, _, N = shared_file
         sums = set()
         for _ in range(100):
-            df_b = pf.thaw(path, verify=False)   # verify=False para velocidade
+            df_b = pf.unfreeze(path, verify=False)   # verify=False para velocidade
             sums.add(round(float(df_b["total"].sum()), 2))
         assert len(sums) == 1, f"Resultados inconsistentes: {sums}"
 
@@ -388,7 +388,7 @@ class TestConsistenciaSOBCarga:
         assert elapsed < 5.0, f"100 audits demoraram {elapsed:.2f}s (limite: 5s)"
 
     def test_thaw_iter_100_batches_sem_dados_perdidos(self, tmp):
-        """thaw_iter com 100 batches pequenos cobre todos os dados."""
+        """peek com 100 batches pequenos cobre todos os dados."""
         N = 100_000; CHUNK = 1_000
         def gen():
             for s in range(0, N, 10_000):
@@ -401,7 +401,7 @@ class TestConsistenciaSOBCarga:
         pf.freeze_stream(gen(), path)
 
         total = 0; sum_v = 0.0
-        for batch in pf.thaw_iter(path, batch_size=CHUNK):
+        for batch in pf.peek(path, batch_size=CHUNK):
             total += len(batch)
             sum_v += float(batch["v"].sum())
 

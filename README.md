@@ -53,7 +53,7 @@ Query only year 2022 → 42M rows in 5.7 min — read 20% of the file, 80% never
 - **Self-describing** — full Arrow schema embedded in the file; readable in 2040 without external documentation
 - **Cloud-native** — native support for S3, Google Cloud Storage and Azure Blob Storage with HTTP Range Requests
 - **DuckDB Catalog** — metadata search across hundreds of remote files without downloading any of them
-- **Streaming** — process datasets larger than RAM with `freeze_file()` and `thaw_iter()`
+- **Streaming** — process datasets larger than RAM with `freeze_file()` and `peek()`
 - **Distributed cluster** — Master + Workers via FastAPI; processes 1 TB in parallel with N workers
 - **Spark DataSource v2** — native integration with PySpark 4.0+ with sparse index pushdown
 - **Full CLI** — `permafrost freeze / thaw / audit / verify / catalog` with rich output
@@ -102,10 +102,10 @@ print(f"Ratio: {metrics['ratio']:.2f}×  |  {metrics['original_mb']:.1f} MB → 
 # Ratio: 8.37×  |  5.85 MB → 0.68 MB
 
 # Decompress everything
-df_back = pf.thaw("sales.permafrost", verify=True)
+df_back = pf.unfreeze("sales.permafrost", verify=True)
 
 # Decompress only 2023 — reads only the chunks for that year
-df_2023 = pf.thaw("sales.permafrost", filter={"year": 2023})
+df_2023 = pf.unfreeze("sales.permafrost", filter={"year": 2023})
 ```
 
 ### Streaming (datasets larger than RAM)
@@ -115,7 +115,7 @@ df_2023 = pf.thaw("sales.permafrost", filter={"year": 2023})
 pf.freeze_file("100gb.csv", "output.permafrost", chunk_rows=50_000)
 
 # Iterative thaw in batches
-for batch_df in pf.thaw_iter("output.permafrost", batch_size=50_000):
+for batch_df in pf.peek("output.permafrost", batch_size=50_000):
     process(batch_df)
 ```
 
@@ -176,7 +176,7 @@ df.filter(df.year == 2023).show()   # pushdown via sparse index — skips irrele
 permafrost freeze sales.csv sales.permafrost --codec lzma2 --partition-by year
 
 # Decompress with filter
-permafrost thaw sales.permafrost --filter '{"year": 2023}' --output sales_2023.csv
+permafrost unfreeze sales.permafrost --filter '{"year": 2023}' --output sales_2023.csv
 
 # Audit (without decompressing)
 permafrost audit sales.permafrost
@@ -213,7 +213,7 @@ permafrost catalog cost-report --tier glacier_deep
 
 ```python
 # Read only 2022 from a file with 5 years / 210M rows of data
-df_2022 = pf.thaw("history.permafrost", filter={"year": 2022})
+df_2022 = pf.unfreeze("history.permafrost", filter={"year": 2022})
 # 42,007,186 rows in 5.7 min — read only 20% of the file, 80% never touched
 ```
 
@@ -282,7 +282,7 @@ The format is self-describing — readable without external documentation:
 | Function | Description |
 |----------|-------------|
 | `pf.freeze(df, path, ...)` | Compress a DataFrame to a `.permafrost` file |
-| `pf.thaw(path, filter=None, verify=False)` | Decompress; `filter` uses sparse index |
+| `pf.unfreeze(path, filter=None, verify=False)` | Decompress; `filter` uses sparse index |
 | `pf.audit(path)` | Returns metadata without decompressing |
 
 ### Streaming
@@ -291,7 +291,7 @@ The format is self-describing — readable without external documentation:
 |----------|-------------|
 | `pf.freeze_file(csv_path, out_path, chunk_rows=50_000)` | Compress large CSV without loading into memory |
 | `pf.freeze_stream(cursor_gen, out_path)` | Compress from a generator |
-| `pf.thaw_iter(path, batch_size=50_000)` | Decompress in iterative batches |
+| `pf.peek(path, batch_size=50_000)` | Decompress in iterative batches |
 
 ### Cloud
 

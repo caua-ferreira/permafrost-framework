@@ -67,6 +67,6 @@ print(f"  Permafrost LZMA2:       {pf_mb:.3f} MB  (ratio={m_pf['ratio']:.1f}×)"
 print(f"  Vantagem Permafrost:    +{(lzma_mb-pf_mb)/lzma_mb*100:.1f}% + thaw seletivo")
 
 # Thaw e verificar
-df_back = pf.thaw("/tmp/posts.permafrost", verify=True)
+df_back = pf.unfreeze("/tmp/posts.permafrost", verify=True)
 print(f"\n[3] Thaw: {len(df_back):,} posts recuperados ✓")
 print("\n✓ Exemplo NoSQL concluído!")

@@ -74,7 +74,7 @@ class TestEdgeCases:
         df = pd.DataFrame({"id": [1], "nome": ["Alice"], "total": [99.99]})
         path = os.path.join(tmp, "one.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 1
         assert df_b["id"].iloc[0] == 1
 
@@ -83,14 +83,14 @@ class TestEdgeCases:
         path = os.path.join(tmp, "one_col.permafrost")
         m = pf.freeze(df, path)
         assert m["cols"] == 1
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 1000
 
     def test_mil_linhas(self, tmp):
         df = pd.DataFrame({"x": range(1000), "y": np.random.rand(1000)})
         path = os.path.join(tmp, "t.permafrost")
         m = pf.freeze(df, path)
-        assert pf.thaw(path).__len__() == 1000
+        assert pf.unfreeze(path).__len__() == 1000
 
     def test_100k_linhas(self, tmp):
         np.random.seed(1)
@@ -100,7 +100,7 @@ class TestEdgeCases:
         path = os.path.join(tmp, "big.permafrost")
         m = pf.freeze(df, path, chunk_rows=10_000)
         assert m["rows"] == N
-        assert len(pf.thaw(path)) == N
+        assert len(pf.unfreeze(path)) == N
 
     def test_nomes_colunas_especiais(self, tmp):
         df = pd.DataFrame({
@@ -111,7 +111,7 @@ class TestEdgeCases:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert set(df_b.columns) == set(df.columns)
 
     def test_valores_extremos_float(self, tmp):
@@ -122,7 +122,7 @@ class TestEdgeCases:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.abs(df["v"].values - df_b["v"].values[:5].astype(float)).max() < 0.01
 
     def test_inteiros_negativos(self, tmp):
@@ -130,7 +130,7 @@ class TestEdgeCases:
                             "v":  np.array([-99.9,-1.0,0.0,1.0,99.9])})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert np.array_equal(df["id"].values, df_b["id"].values[:5].astype(np.int32))
 
     def test_strings_unicode(self, tmp):
@@ -140,7 +140,7 @@ class TestEdgeCases:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert list(df["nome"]) == list(df_b["nome"].astype(str))
 
     def test_chunk_maior_que_df(self, tmp):
@@ -149,7 +149,7 @@ class TestEdgeCases:
         path = os.path.join(tmp, "t.permafrost")
         m = pf.freeze(df, path, chunk_rows=10_000)
         assert m["n_chunks"] == 1
-        assert len(pf.thaw(path)) == 100
+        assert len(pf.unfreeze(path)) == 100
 
     def test_chunk_de_uma_linha(self, tmp):
         """chunk_rows=1 → 1 chunk por linha."""
@@ -157,7 +157,7 @@ class TestEdgeCases:
         path = os.path.join(tmp, "t.permafrost")
         m = pf.freeze(df, path, chunk_rows=1)
         assert m["n_chunks"] == 10
-        assert len(pf.thaw(path)) == 10
+        assert len(pf.unfreeze(path)) == 10
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -187,7 +187,7 @@ class TestCodacsEQuantizacao:
         m = pf.freeze(df_base, path, codec=codec, quant=pf.QUANT_NONE)
         assert m["codec"] == name
         assert m["ratio"] > 2.0
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == len(df_base)
         assert np.array_equal(df_base["id"].values,
                                df_b["id"].values[:len(df_base)].astype(np.int64))
@@ -198,7 +198,7 @@ class TestCodacsEQuantizacao:
         path = os.path.join(tmp, "zpaq.permafrost")
         m = pf.freeze(df_base, path, codec=pf.CODEC_ZPAQ)
         assert m["codec"] == "zpaq"
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == len(df_base)
         assert pf.audit(path)["codec"] == "zpaq"
 
@@ -211,7 +211,7 @@ class TestCodacsEQuantizacao:
     def test_quant_levels_round_trip(self, df_base, tmp, quant, label):
         path = os.path.join(tmp, f"quant_{label}.permafrost")
         m = pf.freeze(df_base, path, quant=quant)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == len(df_base)
         # IDs e categorias sempre exatos
         assert np.array_equal(df_base["id"].values,
@@ -245,7 +245,7 @@ class TestPreditoresColunares:
         df = pd.DataFrame({"id": np.arange(1, 5001, dtype=np.int32)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(df["id"].values, df_b["id"].values.astype(np.int64))
 
     def test_delta_zigzag_ids_com_gaps(self, tmp):
@@ -253,7 +253,7 @@ class TestPreditoresColunares:
         df  = pd.DataFrame({"id": ids})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert np.array_equal(ids, df_b["id"].values[:6].astype(np.int32))
 
     def test_lag1_zigzag_floats_monetarios(self, tmp):
@@ -262,7 +262,7 @@ class TestPreditoresColunares:
         df = pd.DataFrame({"preco": precos})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path, codec=pf.CODEC_LZMA2)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diff = np.abs(precos - df_b["preco"].values.astype(float)).max()
         assert diff < 0.01
 
@@ -271,7 +271,7 @@ class TestPreditoresColunares:
         df    = pd.DataFrame({"ts": dates, "v": range(2000)})
         path  = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         orig = df["ts"].dt.strftime("%Y-%m-%d %H:%M").values
         rest = pd.to_datetime(df_b["ts"]).dt.strftime("%Y-%m-%d %H:%M").values
         assert (orig == rest[:len(orig)]).mean() == 1.0
@@ -281,7 +281,7 @@ class TestPreditoresColunares:
         df   = pd.DataFrame({"cat": np.random.choice(cats, 3000)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert (df["cat"].values == df_b["cat"].astype(str).values[:3000]).mean() == 1.0
 
     def test_raw_text_strings_longas(self, tmp):
@@ -289,14 +289,14 @@ class TestPreditoresColunares:
         df    = pd.DataFrame({"descricao": texts, "v": range(500)})
         path  = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(df["descricao"]) == list(df_b["descricao"].astype(str))
 
     def test_todos_preditores_simultaneos(self, full_df, tmp):
         path = os.path.join(tmp, "all_pred.permafrost")
         m    = pf.freeze(full_df, path, codec=pf.CODEC_LZMA2,
                          quant=pf.QUANT_NONE, partition_by="ano")
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == len(full_df)
         # Verificar cada tipo
         assert np.array_equal(full_df["id_i32"].values,
@@ -376,7 +376,7 @@ class TestIntegridadeCompleta:
 
     def test_arquivo_integro_passa(self, good_file, tmp):
         path, df = good_file
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == len(df)
 
     def test_magic_errado_detectado(self, good_file, tmp):
@@ -385,7 +385,7 @@ class TestIntegridadeCompleta:
         shutil.copy(path, corrupt)
         with open(corrupt, "r+b") as f: f.seek(0); f.write(b"\x00\x00\x00\x00")
         with pytest.raises(ValueError, match="[Mm]agic"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_header_corrompido_detectado(self, good_file, tmp):
         path, _ = good_file
@@ -393,7 +393,7 @@ class TestIntegridadeCompleta:
         shutil.copy(path, corrupt)
         with open(corrupt, "r+b") as f: f.seek(100); f.write(b"\xFF" * 20)
         with pytest.raises(ValueError, match="SHA"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_chunk_corrompido_detectado(self, good_file, tmp):
         path, _ = good_file
@@ -403,7 +403,7 @@ class TestIntegridadeCompleta:
         offset = info["index_entries"][0]["byte_offset"]
         with open(corrupt, "r+b") as f: f.seek(offset + 50); f.write(b"\x00" * 30)
         with pytest.raises(ValueError, match="[Cc]orrompido|SHA"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_truncado_detectado(self, good_file, tmp):
         path, _ = good_file
@@ -411,18 +411,18 @@ class TestIntegridadeCompleta:
         sz    = os.path.getsize(path)
         with open(path,"rb") as s, open(trunc,"wb") as d: d.write(s.read(sz//2))
         with pytest.raises(ValueError):
-            pf.thaw(trunc)
+            pf.unfreeze(trunc)
 
     def test_arquivo_vazio_detectado(self, tmp):
         empty = os.path.join(tmp, "empty.permafrost")
         open(empty, "wb").close()
         with pytest.raises((ValueError, Exception)):
-            pf.thaw(empty)
+            pf.unfreeze(empty)
 
     def test_verify_false_nao_valida(self, good_file, tmp):
         path, df = good_file
         """verify=False deve funcionar em arquivo válido sem checar SHA."""
-        df_b = pf.thaw(path, verify=False)
+        df_b = pf.unfreeze(path, verify=False)
         assert len(df_b) == len(df)
 
 
@@ -449,17 +449,17 @@ class TestSparseIndexCompleto:
     def test_filter_cada_ano(self, multipart_file):
         path, df = multipart_file
         for ano in [2020,2021,2022,2023,2024]:
-            df_f = pf.thaw(path, filter={"ano": ano})
+            df_f = pf.unfreeze(path, filter={"ano": ano})
             real  = (df["ano"]==ano).sum()
             assert len(df_f) >= real * 0.95, f"Ano {ano}: {len(df_f)}<{real}"
 
     def test_filter_ano_inexistente_retorna_vazio(self, multipart_file):
         path, _ = multipart_file
-        assert len(pf.thaw(path, filter={"ano": 9999})) == 0
+        assert len(pf.unfreeze(path, filter={"ano": 9999})) == 0
 
     def test_row_range_exato(self, multipart_file):
         path, df = multipart_file
-        df_r = pf.thaw(path, row_range=(0, 999))
+        df_r = pf.unfreeze(path, row_range=(0, 999))
         assert len(df_r) <= 1000
 
     def test_thaw_seletivo_le_menos_bytes(self, multipart_file):
@@ -474,9 +474,9 @@ class TestSparseIndexCompleto:
     def test_thaw_completo_igual_sum_filtros(self, multipart_file):
         path, df = multipart_file
         total_filtros = sum(
-            len(pf.thaw(path, filter={"ano": a})) for a in [2020,2021,2022,2023,2024]
+            len(pf.unfreeze(path, filter={"ano": a})) for a in [2020,2021,2022,2023,2024]
         )
-        total_full = len(pf.thaw(path))
+        total_full = len(pf.unfreeze(path))
         assert abs(total_filtros - total_full) < 100  # tolerância de borda
 
 
@@ -501,20 +501,20 @@ class TestChunkModeCompleto:
         m    = pf.freeze_stream(self._gen(100_000,20_000), path, codec=pf.CODEC_LZMA2)
         assert m["rows"] == 100_000
         assert m["ratio"] > 2.0
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 100_000
 
     def test_freeze_stream_zstd(self, tmp):
         path = os.path.join(tmp, "stream_zstd.permafrost")
         m    = pf.freeze_stream(self._gen(50_000,10_000), path, codec=pf.CODEC_ZSTD)
         assert m["rows"] == 50_000
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 50_000
 
     def test_freeze_stream_ids_corretos(self, tmp):
         path = os.path.join(tmp, "stream_ids.permafrost")
         pf.freeze_stream(self._gen(60_000,15_000), path)
-        df_b = pf.thaw(path)
+        df_b = pf.unfreeze(path)
         assert df_b["id"].iloc[0] == 1
         assert df_b["id"].iloc[-1] == 60_000
 
@@ -527,7 +527,7 @@ class TestChunkModeCompleto:
         out = os.path.join(tmp, "large.permafrost")
         m   = pf.freeze_file(csv, out, chunk_rows=5_000)
         assert m["rows"] == N
-        df_b = pf.thaw(out, verify=True)
+        df_b = pf.unfreeze(out, verify=True)
         assert len(df_b) == N
 
     def test_freeze_file_jsonl(self, tmp):
@@ -545,7 +545,7 @@ class TestChunkModeCompleto:
         path = os.path.join(tmp, "stream.permafrost")
         pf.freeze_stream(self._gen(80_000,16_000), path)
         total = 0
-        for batch in pf.thaw_iter(path, batch_size=10_000):
+        for batch in pf.peek(path, batch_size=10_000):
             assert len(batch) <= 10_000
             total += len(batch)
         assert total == 80_000
@@ -553,14 +553,14 @@ class TestChunkModeCompleto:
     def test_thaw_iter_sem_batch_size(self, tmp):
         path = os.path.join(tmp, "stream.permafrost")
         m    = pf.freeze_stream(self._gen(50_000,10_000), path)
-        total = sum(len(b) for b in pf.thaw_iter(path))
+        total = sum(len(b) for b in pf.peek(path))
         assert total == 50_000
 
     def test_thaw_iter_com_filter(self, tmp):
         path = os.path.join(tmp, "stream.permafrost")
         pf.freeze_stream(self._gen(60_000,10_000), path)
-        # Sem filtro ainda — thaw_iter com verify
-        total = sum(len(b) for b in pf.thaw_iter(path, verify=True))
+        # Sem filtro ainda — peek com verify
+        total = sum(len(b) for b in pf.peek(path, verify=True))
         assert total == 60_000
 
     def test_freeze_stream_ram_constante(self, tmp):
@@ -647,14 +647,14 @@ class TestCatalogCompleto:
 
     def test_thaw_por_nome(self, catalog_com_dados):
         cat, arq = catalog_com_dados
-        df_b = cat.thaw("vendas_2022")
+        df_b = cat.unfreeze("vendas_2022")
         _, df_orig = arq["vendas_2022"]
         assert len(df_b) == len(df_orig)
 
     def test_thaw_desconhecido_raises(self, catalog_com_dados):
         cat, _ = catalog_com_dados
         with pytest.raises(KeyError):
-            cat.thaw("nao_existe_mesmo")
+            cat.unfreeze("nao_existe_mesmo")
 
     def test_integrity_check_todos_ok(self, catalog_com_dados):
         cat, _ = catalog_com_dados
@@ -736,7 +736,7 @@ class TestStorageCompleto:
         assert adapter.exists(remote)
         local_copy = os.path.join(tmp, "copy.permafrost")
         adapter.download(remote, local_copy, show_progress=False)
-        df_b = pf.thaw(local_copy, verify=True)
+        df_b = pf.unfreeze(local_copy, verify=True)
         assert len(df_b) == N
 
     def test_local_list(self, pf_file, tmp):
@@ -875,7 +875,7 @@ class TestSchemaDetectorCompleto:
         df, _, _ = det.detect(jl)
         path = os.path.join(tmp,"posts.permafrost")
         m = pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 500
 
 
@@ -920,9 +920,9 @@ class TestBenchmarksMinimos:
         path = os.path.join(tmp,"bench.permafrost")
         pf.freeze(benchmark_df, path)
         t0 = time.time()
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         elapsed = time.time() - t0
-        assert elapsed < 2.0, f"thaw demorou {elapsed:.2f}s (limite: 2s)"
+        assert elapsed < 2.0, f"unfreeze demorou {elapsed:.2f}s (limite: 2s)"
 
     def test_audit_em_menos_de_50ms(self, benchmark_df, tmp):
         path = os.path.join(tmp,"bench.permafrost")
@@ -1021,7 +1021,7 @@ class TestSparkDataSource:
             .option("codec","lzma2").mode("overwrite").save(out)
         files = glob.glob(f"{out}*")
         assert len(files) > 0
-        df_b = pf.thaw(files[0], verify=True)
+        df_b = pf.unfreeze(files[0], verify=True)
         assert len(df_b) > 0
 
     def test_join_com_outro_df(self, spark_session, spark_pf_file):

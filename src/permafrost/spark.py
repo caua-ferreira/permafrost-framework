@@ -249,7 +249,7 @@ class _PermafrostWriter(DataSourceWriter if HAS_PYSPARK else object):
         Mescla os arquivos parciais em um único .permafrost.
         """
         import pandas as pd
-        from permafrost.codec import freeze, thaw
+        from permafrost.codec import freeze, unfreeze
 
         valid = [m for m in messages if m and m.path and os.path.exists(m.path)]
         if not valid:
@@ -260,8 +260,8 @@ class _PermafrostWriter(DataSourceWriter if HAS_PYSPARK else object):
             os.rename(valid[0].path, self.output_path)
             return
 
-        # Múltiplas partes — thaw e re-freeze para arquivo único
-        dfs = [thaw(m.path, verify=False) for m in valid]
+        # Múltiplas partes — unfreeze e re-freeze para arquivo único
+        dfs = [unfreeze(m.path, verify=False) for m in valid]
         import pandas as pd
         df_merged = pd.concat(dfs, ignore_index=True)
 

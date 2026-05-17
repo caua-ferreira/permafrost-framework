@@ -270,7 +270,7 @@ def freeze_file(
         raise ValueError(f"Formato não suportado: {ext}")
 
 
-def thaw_iter(
+def peek(
     path: str,
     verify: bool = True,
     filter: Optional[dict] = None,
@@ -280,7 +280,7 @@ def thaw_iter(
 ) -> Generator[pd.DataFrame, None, None]:
     """Itera sobre chunks de um ``.permafrost`` sem carregar tudo na memória.
 
-    Útil para processar arquivos muito grandes linha por linha, ou para aplicar
+    Útil para processar arquivos muito grandes em batches, ou para aplicar
     filtros de partição sem descomprimir chunks irrelevantes.
 
     Args:
@@ -359,3 +359,14 @@ def thaw_iter(
 
     if buf_df:
         yield pd.concat(buf_df, ignore_index=True)
+
+
+# ── DEPRECATED ALIAS ──────────────────────────────────────────────────────────
+def thaw_iter(*args, **kwargs):
+    """Deprecated: use ``peek()`` instead. Will be removed in v2.0."""
+    import warnings
+    warnings.warn(
+        "thaw_iter() is deprecated and will be removed in v2.0. Use peek() instead.",
+        DeprecationWarning, stacklevel=2,
+    )
+    yield from peek(*args, **kwargs)

@@ -186,7 +186,7 @@ class TestSHA256Header:
         with open(corrupt, "r+b") as f:
             f.seek(200); f.write(b"\xFF")
         with pytest.raises(ValueError, match="SHA"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_sha256_de_cada_chunk_presente(self, spec_file):
         _, _, _, raw = spec_file
@@ -325,7 +325,7 @@ class TestCompatibilidade:
         path = os.path.join(tmp, "zstd_compat.permafrost")
         pf.freeze(df, path, codec=CODEC_ZSTD)
         # Deve ser legível sem especificar codec
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
 
     def test_arquivo_com_codec_lzma2_legivel(self, tmp):
@@ -333,7 +333,7 @@ class TestCompatibilidade:
         df = pd.DataFrame({"id": range(N), "v": np.random.rand(N)})
         path = os.path.join(tmp, "lzma_compat.permafrost")
         pf.freeze(df, path, codec=CODEC_LZMA2)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
 
     def test_audit_nao_modifica_conteudo(self, spec_file, tmp):
@@ -346,10 +346,10 @@ class TestCompatibilidade:
         path, _, N, _ = spec_file
         results = []
         for _ in range(5):
-            df_b = pf.thaw(path, verify=True)
+            df_b = pf.unfreeze(path, verify=True)
             results.append(float(df_b["total"].sum()))
         assert len(set(round(r, 2) for r in results)) == 1, \
-            f"thaw múltiplo inconsistente: {results}"
+            f"unfreeze múltiplo inconsistente: {results}"
 
     def test_arquivo_sem_partition_by_legivel(self, tmp):
         """Arquivo sem partition_by (sem sparse index de partição)."""
@@ -358,7 +358,7 @@ class TestCompatibilidade:
         pf.freeze(df, path)  # sem partition_by
         info = pf.audit(path)
         assert info["partition_col"] in (None, "__rows__", "")
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == 500
 
     def test_arquivo_com_1_chunk_legivel(self, tmp):
@@ -368,7 +368,7 @@ class TestCompatibilidade:
         path = os.path.join(tmp, "onechunk.permafrost")
         m = pf.freeze(df, path, chunk_rows=10_000)
         assert m["n_chunks"] == 1
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
 
 

@@ -123,24 +123,24 @@ class TestThawLossless:
     def test_linhas_recuperadas(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        assert len(pf.thaw(path, verify=True)) == len(sample_df)
+        assert len(pf.unfreeze(path, verify=True)) == len(sample_df)
 
     def test_colunas_preservadas(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path)
-        assert set(pf.thaw(path).columns) == set(sample_df.columns)
+        assert set(pf.unfreeze(path).columns) == set(sample_df.columns)
 
     def test_ids_exatos_delta_zigzag(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         assert np.array_equal(sample_df["id"].values,
                                df_t["id"].values[:len(sample_df)].astype(np.int64))
 
     def test_categorias_exatas_category_u8(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         for col in ("status","pais","categoria"):
             pct = (sample_df[col].astype(str).values ==
                    df_t[col].astype(str).values[:len(sample_df)]).mean() * 100
@@ -149,7 +149,7 @@ class TestThawLossless:
     def test_floats_exatos_lag1_zigzag(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         for col in ("preco_unitario","total_liquido"):
             diff = np.abs(sample_df[col].values -
                           df_t[col].values[:len(sample_df)].astype(float)).max()
@@ -158,7 +158,7 @@ class TestThawLossless:
     def test_timestamps_exatos_ts_delta_s(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_LZMA2, quant=pf.QUANT_NONE)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         orig = sample_df["data"].dt.strftime("%Y-%m-%d %H:%M").values
         rest = pd.to_datetime(df_t["data"]).dt.strftime("%Y-%m-%d %H:%M").values[:len(sample_df)]
         assert (orig == rest).mean() == 1.0
@@ -168,14 +168,14 @@ class TestThawVault:
     def test_ids_exatos(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "v.permafrost")
         pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         assert np.array_equal(sample_df["id"].values,
                                df_t["id"].values[:len(sample_df)].astype(np.int64))
 
     def test_categorias_exatas(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "v.permafrost")
         pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         for col in ("status","pais"):
             assert (sample_df[col].astype(str).values ==
                     df_t[col].astype(str).values[:len(sample_df)]).mean() == 1.0
@@ -183,7 +183,7 @@ class TestThawVault:
     def test_floats_tolerancia_r1(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "v.permafrost")
         pf.freeze(sample_df, path, quant=pf.QUANT_MEDIUM)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         diff = np.abs(sample_df["preco_unitario"].values -
                       df_t["preco_unitario"].values[:len(sample_df)].astype(float)).max()
         assert diff <= 1.0, f"max_diff=R${diff:.2f}"
@@ -193,7 +193,7 @@ class TestIntegridade:
     def test_arquivo_correto_passa(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
         pf.freeze(sample_df, path)
-        assert len(pf.thaw(path, verify=True)) == len(sample_df)
+        assert len(pf.unfreeze(path, verify=True)) == len(sample_df)
 
     def test_detecta_header_corrompido(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
@@ -202,7 +202,7 @@ class TestIntegridade:
         shutil.copy(path, corrupt)
         with open(corrupt,"r+b") as f: f.seek(500); f.write(b"\x00"*8)
         with pytest.raises(ValueError, match="SHA"):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_detecta_payload_corrompido(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
@@ -212,7 +212,7 @@ class TestIntegridade:
         shutil.copy(path, corrupt)
         with open(corrupt,"r+b") as f: f.seek(sz//2); f.write(b"\xFF"*32)
         with pytest.raises(ValueError):
-            pf.thaw(corrupt, verify=True)
+            pf.unfreeze(corrupt, verify=True)
 
     def test_detecta_truncado(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "g.permafrost")
@@ -220,13 +220,13 @@ class TestIntegridade:
         pf.freeze(sample_df, path)
         sz = os.path.getsize(path)
         with open(path,"rb") as s, open(trunc,"wb") as d: d.write(s.read(sz//2))
-        with pytest.raises(ValueError): pf.thaw(trunc)
+        with pytest.raises(ValueError): pf.unfreeze(trunc)
 
     def test_detecta_magic_errado(self, tmp_dir):
         fake = os.path.join(tmp_dir, "f.permafrost")
         with open(fake,"wb") as f: f.write(b"%PDF-1.4 not permafrost")
         with pytest.raises(ValueError, match="[Mm]agic"):
-            pf.thaw(fake)
+            pf.unfreeze(fake)
 
 
 class TestSparseIndex:
@@ -235,19 +235,19 @@ class TestSparseIndex:
         df_s = sample_df.sort_values("ano").reset_index(drop=True)
         pf.freeze(df_s, path, partition_by="ano", chunk_rows=1000)
         ano  = sorted(df_s["ano"].unique())[0]
-        df_f = pf.thaw(path, filter={"ano": ano})
+        df_f = pf.unfreeze(path, filter={"ano": ano})
         assert 0 < len(df_f) < len(df_s)
 
     def test_row_range_funciona(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "t.permafrost")
         pf.freeze(sample_df, path, chunk_rows=1000)
-        assert len(pf.thaw(path, row_range=(0, 999))) <= 1000
+        assert len(pf.unfreeze(path, row_range=(0, 999))) <= 1000
 
     def test_filter_vazio_retorna_df_vazio(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "p.permafrost")
         df_s = sample_df.sort_values("ano").reset_index(drop=True)
         pf.freeze(df_s, path, partition_by="ano")
-        assert len(pf.thaw(path, filter={"ano": 9999})) == 0
+        assert len(pf.unfreeze(path, filter={"ano": 9999})) == 0
 
 
 if __name__ == "__main__":
@@ -267,13 +267,13 @@ class TestZPAQCodec:
         path = os.path.join(tmp_dir, "zpaq.permafrost")
         m = pf.freeze(sample_df, path, codec=pf.CODEC_ZPAQ, quant=pf.QUANT_NONE)
         assert m["ratio"] > 3.0
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         assert len(df_t) == len(sample_df)
 
     def test_zpaq_ids_exatos(self, sample_df, tmp_dir):
         path = os.path.join(tmp_dir, "zpaq.permafrost")
         pf.freeze(sample_df, path, codec=pf.CODEC_ZPAQ, quant=pf.QUANT_NONE)
-        df_t = pf.thaw(path, verify=True)
+        df_t = pf.unfreeze(path, verify=True)
         assert np.array_equal(sample_df["id"].values,
                                df_t["id"].values[:len(sample_df)].astype(np.int64))
 

@@ -91,7 +91,7 @@ class TestCamposAusentes:
         df, _, _ = det.detect(path)
         pf_path = os.path.join(tmp, "partial.permafrost")
         m = pf.freeze(df, pf_path)
-        df_b = pf.thaw(pf_path, verify=True)
+        df_b = pf.unfreeze(pf_path, verify=True)
         assert len(df_b) == len(docs)
 
 
@@ -146,7 +146,7 @@ class TestTiposMisturados:
         df, _, _ = det.detect(path)
         pf_path = os.path.join(tmp, "mt.permafrost")
         pf.freeze(df, pf_path)
-        df_b = pf.thaw(pf_path, verify=True)
+        df_b = pf.unfreeze(pf_path, verify=True)
         assert len(df_b) == 200
 
 
@@ -200,7 +200,7 @@ class TestAninhamentoProfundo:
         df, _, _ = det.detect(path)
         pf_path = os.path.join(tmp, "nested.permafrost")
         m = pf.freeze(df, pf_path)
-        df_b = pf.thaw(pf_path, verify=True)
+        df_b = pf.unfreeze(pf_path, verify=True)
         assert len(df_b) == 500
 
 
@@ -240,7 +240,7 @@ class TestWideTable:
         df, _, _ = det.detect(path)
         pf_path  = os.path.join(tmp, "wide100.permafrost")
         pf.freeze(df, pf_path, codec=pf.CODEC_LZMA2)
-        df_b = pf.thaw(pf_path, verify=True)
+        df_b = pf.unfreeze(pf_path, verify=True)
         assert len(df_b) == N
 
     def test_campos_com_nomes_identicos_normalizados(self, tmp):
@@ -288,7 +288,7 @@ class TestSchemaDetectorGrande:
         pf_path  = os.path.join(tmp, "big_ft.permafrost")
         m = pf.freeze(df, pf_path)
         assert m["rows"] == N
-        df_b = pf.thaw(pf_path, verify=True)
+        df_b = pf.unfreeze(pf_path, verify=True)
         assert len(df_b) == N
 
     def test_dataframe_tabular_grande(self, tmp):

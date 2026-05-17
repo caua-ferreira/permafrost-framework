@@ -456,7 +456,7 @@ class TestCatalogMissingBranches:
 class TestChunkModeBranches:
 
     def test_thaw_iter_multiple_batches(self, tmp):
-        """thaw_iter with small batch_size → multiple iterations (covers more paths)."""
+        """peek with small batch_size → multiple iterations (covers more paths)."""
         np.random.seed(3)
         N = 500
         df = pd.DataFrame({
@@ -465,7 +465,7 @@ class TestChunkModeBranches:
         })
         path = os.path.join(tmp, "iter.permafrost")
         pf.freeze(df, path, codec=pf.CODEC_ZSTD, chunk_rows=100)
-        batches = list(pf.thaw_iter(path, batch_size=50))
+        batches = list(pf.peek(path, batch_size=50))
         total = sum(len(b) for b in batches)
         assert total == N
 
@@ -480,5 +480,5 @@ class TestChunkModeBranches:
         path = os.path.join(tmp, "stream.permafrost")
         pf.freeze_stream(gen(), path, codec=pf.CODEC_ZSTD)
         assert os.path.exists(path)
-        df_back = pf.thaw(path)
+        df_back = pf.unfreeze(path)
         assert len(df_back) == 6

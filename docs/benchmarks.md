@@ -88,7 +88,7 @@ Arquivo com 5 anos de dados (80k linhas), particionado por `ano`:
 | **RAM pico** | **708 MB** (constante, independe do volume) |
 | Tempo de freeze | 4.95s |
 | Thaw completo | 300.000 linhas — IDs e valores corretos |
-| thaw_iter (10 batches de 30k) | 300.000 linhas — OK |
+| peek (10 batches de 30k) | 300.000 linhas — OK |
 
 ---
 

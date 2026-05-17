@@ -26,14 +26,14 @@ class TestVarianciaZero:
         df = pd.DataFrame({"id": np.ones(1000, dtype=np.int32), "v": range(1000)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert (df_b["id"].values == 1).all()
 
     def test_float_todos_zero(self, tmp):
         df = pd.DataFrame({"id": range(500), "v": np.zeros(500)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert (df_b["v"].values.astype(float) == 0.0).all()
 
     def test_float_todos_mesmo_valor(self, tmp):
@@ -41,7 +41,7 @@ class TestVarianciaZero:
         df = pd.DataFrame({"id": range(1000), "preco": np.full(1000, VALOR)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diffs = np.abs(df_b["preco"].values.astype(float) - VALOR)
         assert diffs.max() < 0.01
 
@@ -49,7 +49,7 @@ class TestVarianciaZero:
         df = pd.DataFrame({"id": range(500), "cat": ["MESMO"] * 500})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert (df_b["cat"].astype(str) == "MESMO").all()
 
     def test_timestamp_todos_iguais(self, tmp):
@@ -60,7 +60,7 @@ class TestVarianciaZero:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         restored = pd.to_datetime(df_b["ts"]).dt.strftime("%Y-%m-%d %H:%M").values
         assert (restored == "2022-06-15 12:00").all()
 
@@ -82,7 +82,7 @@ class TestCategoryU8Limite:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         pct = (df["cat"].values == df_b["cat"].astype(str).values[:N]).mean()
         assert pct == 1.0, f"256 cats: {pct*100:.2f}%"
         # Verificar que todos os 256 valores únicos foram preservados
@@ -99,7 +99,7 @@ class TestCategoryU8Limite:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         pct = (df["cat"].values == df_b["cat"].astype(str).values[:N]).mean()
         assert pct == 1.0
 
@@ -108,7 +108,7 @@ class TestCategoryU8Limite:
         df = pd.DataFrame({"id": range(1000), "cat": ["UNICO"] * 1000})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert (df_b["cat"].astype(str) == "UNICO").all()
 
     def test_categoria_com_strings_longas(self, tmp):
@@ -119,7 +119,7 @@ class TestCategoryU8Limite:
         df = pd.DataFrame({"id": range(N), "cat": np.random.choice(cats, N)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         pct = (df["cat"].values == df_b["cat"].astype(str).values[:N]).mean()
         assert pct == 1.0
 
@@ -136,7 +136,7 @@ class TestTimestampsExtremos:
         df = pd.DataFrame({"id": range(3), "ts": dates, "v": range(3)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         fmt = "%Y-%m-%d"
         orig = df["ts"].dt.strftime(fmt).values
         rest = pd.to_datetime(df_b["ts"]).dt.strftime(fmt).values
@@ -153,7 +153,7 @@ class TestTimestampsExtremos:
         df = pd.DataFrame({"id": range(100), "ts": dates})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         orig = df["ts"].dt.strftime("%Y-%m-%d").values
         rest = pd.to_datetime(df_b["ts"]).dt.strftime("%Y-%m-%d").values[:100]
         assert (orig == rest).mean() == 1.0
@@ -164,7 +164,7 @@ class TestTimestampsExtremos:
         df = pd.DataFrame({"id": range(500), "ts": dates, "v": range(500)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         orig = df["ts"].dt.strftime("%Y-%m-%d %H:%M:%S").values
         rest = pd.to_datetime(df_b["ts"]).dt.strftime("%Y-%m-%d %H:%M:%S").values
         assert (orig == rest).mean() == 1.0
@@ -186,7 +186,7 @@ class TestTimestampsExtremos:
         df = pd.DataFrame({"id": range(N), "ts": dates})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         orig = df["ts"].dt.strftime("%Y-%m-%d").values
         rest = pd.to_datetime(df_b["ts"]).dt.strftime("%Y-%m-%d").values[:N]
         pct = (orig == rest).mean()
@@ -205,7 +205,7 @@ class TestInteirosExtremos:
         df  = pd.DataFrame({"id": ids, "v": range(5)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["id"].values[:5].astype(np.int32))
 
     def test_inteiros_negativos_grandes(self, tmp):
@@ -213,7 +213,7 @@ class TestInteirosExtremos:
         df  = pd.DataFrame({"id": ids, "v": range(7)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["id"].values[:7].astype(np.int32))
 
     def test_int64_valores_grandes(self, tmp):
@@ -228,7 +228,7 @@ class TestInteirosExtremos:
         df  = pd.DataFrame({"id": ids, "v": range(4)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["id"].values[:4].astype(np.int64))
 
     def test_ids_decrescentes(self, tmp):
@@ -238,7 +238,7 @@ class TestInteirosExtremos:
         df  = pd.DataFrame({"id": ids, "v": range(N)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["id"].values[:N].astype(np.int32))
 
     def test_ids_aleatorios_sem_padrao(self, tmp):
@@ -249,7 +249,7 @@ class TestInteirosExtremos:
         df  = pd.DataFrame({"id": ids, "v": range(N)})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["id"].values[:N].astype(np.int32))
 
 
@@ -267,7 +267,7 @@ class TestFloatsEspeciais:
         df   = pd.DataFrame({"id": range(N), "v": vals})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diff = np.abs(vals - df_b["v"].values[:N].astype(float)).max()
         assert diff < 0.001
 
@@ -278,7 +278,7 @@ class TestFloatsEspeciais:
         df   = pd.DataFrame({"id": range(2000), "v": vals})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path, quant=pf.QUANT_NONE)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diff = np.abs(vals - df_b["v"].values[:2000].astype(float)).max()
         # O codec lag1_zigzag usa escala de centésimos (0.01)
         # Para valores entre 0 e 1, a precisão máxima é ~0.005
@@ -290,7 +290,7 @@ class TestFloatsEspeciais:
         df   = pd.DataFrame({"id": range(1000), "v": vals})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diff = np.abs(vals - df_b["v"].values[:1000].astype(float)).max()
         assert diff < 0.01
 
@@ -303,7 +303,7 @@ class TestFloatsEspeciais:
         df   = pd.DataFrame({"id": range(N), "v": vals})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         diff = np.abs(vals - df_b["v"].values[:N].astype(float)).max()
         assert diff < 0.01
 
@@ -322,14 +322,14 @@ class TestStringsEspeciais:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(df["nome"]) == list(df_b["nome"].astype(str))
 
     def test_string_apenas_espacos(self, tmp):
         df = pd.DataFrame({"id": range(3), "s": [" ", "  ", "   "]})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(df["s"]) == list(df_b["s"].astype(str))
 
     def test_string_unicode_completo(self, tmp):
@@ -347,7 +347,7 @@ class TestStringsEspeciais:
         df = pd.DataFrame({"id": range(len(strings)), "s": strings})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(strings) == list(df_b["s"].astype(str))
 
     def test_string_muito_longa(self, tmp):
@@ -356,7 +356,7 @@ class TestStringsEspeciais:
         df = pd.DataFrame({"id": [1, 2], "s": [long_str, "curta"]})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert df_b["s"].iloc[0] == long_str
         assert df_b["s"].iloc[1] == "curta"
 
@@ -366,7 +366,7 @@ class TestStringsEspeciais:
         df = pd.DataFrame({"id": range(4), "s": strings})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(strings) == list(df_b["s"].astype(str))
 
     def test_string_numerica_nao_vira_numero(self, tmp):
@@ -375,7 +375,7 @@ class TestStringsEspeciais:
         df = pd.DataFrame({"id": range(len(strings)), "s": strings})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert list(strings) == list(df_b["s"].astype(str))
 
 
@@ -394,7 +394,7 @@ class TestMultiColunaEdgeCases:
         df  = pd.DataFrame({"id": np.arange(N, dtype=np.int32), "ref_id": ids})
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert np.array_equal(ids, df_b["ref_id"].values[:N].astype(np.int32))
 
     def test_todas_colunas_mesmo_predictor(self, tmp):
@@ -406,7 +406,7 @@ class TestMultiColunaEdgeCases:
         df.insert(0, "id", np.arange(N, dtype=np.int32))
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path, codec=pf.CODEC_LZMA2)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
         for col in (c for c in df.columns if c != "id"):
             diff = np.abs(df[col].values - df_b[col].values[:N].astype(float)).max()
@@ -427,7 +427,7 @@ class TestMultiColunaEdgeCases:
         path = os.path.join(tmp, "wide.permafrost")
         m    = pf.freeze(df, path, codec=pf.CODEC_LZMA2)
         assert m["cols"] == 100
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         assert len(df_b) == N
         assert set(df_b.columns) == set(df.columns)
 
@@ -446,7 +446,7 @@ class TestMultiColunaEdgeCases:
         pf.freeze(df, path, partition_by="ano")
         info = pf.audit(path)
         assert info["partition_col"] == "ano"
-        df_b = pf.thaw(path, filter={"ano": 2022})
+        df_b = pf.unfreeze(path, filter={"ano": 2022})
         assert (df_b["ano"].values.astype(int) == 2022).all()
 
     def test_dataframe_com_apenas_categoria(self, tmp):
@@ -460,7 +460,7 @@ class TestMultiColunaEdgeCases:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         for col in ("a","b","c"):
             pct = (df[col].values == df_b[col].astype(str).values[:N]).mean()
             assert pct == 1.0, f"col={col}: {pct*100:.2f}%"
@@ -475,7 +475,7 @@ class TestMultiColunaEdgeCases:
         })
         path = os.path.join(tmp, "t.permafrost")
         pf.freeze(df, path)
-        df_b = pf.thaw(path, verify=True)
+        df_b = pf.unfreeze(path, verify=True)
         for col in ("t1","t2","t3"):
             orig = df[col].dt.strftime("%Y-%m-%d %H").values
             rest = pd.to_datetime(df_b[col]).dt.strftime("%Y-%m-%d %H").values

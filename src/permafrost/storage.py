@@ -1271,7 +1271,7 @@ def thaw_from(remote_uri: str, adapter: StorageAdapter = None,
         df = thaw_from("s3://bucket/vendas_2024.permafrost", filter={"ano": 2024})
     """
     import uuid, tempfile
-    from permafrost.codec import thaw
+    from permafrost.codec import unfreeze as thaw
 
     if adapter is None:
         adapter = storage_from_uri(remote_uri)
@@ -1285,7 +1285,7 @@ def thaw_from(remote_uri: str, adapter: StorageAdapter = None,
     print(f"  download ← {remote_uri} ...")
     adapter.download(remote_uri, local_tmp)
 
-    print(f"  thaw → DataFrame ...")
+    print(f"  unfreeze → DataFrame ...")
     df = thaw(local_tmp, **thaw_kwargs)
 
     if not keep_local:

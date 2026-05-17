@@ -43,10 +43,10 @@ import permafrost as pf
     # Ratio: 8.37×  |  0.67 MB
 
     # Descomprimir
-    df_back = pf.thaw("vendas.permafrost", verify=True)
+    df_back = pf.unfreeze("vendas.permafrost", verify=True)
 
     # Ler apenas 2023 — sem descomprimir o resto
-    df_2023 = pf.thaw("vendas.permafrost", filter={"ano": 2023})
+    df_2023 = pf.unfreeze("vendas.permafrost", filter={"ano": 2023})
     ```
 
 === "JSONL / NoSQL"
@@ -82,7 +82,7 @@ import permafrost as pf
     pf.freeze_stream(meu_cursor(), "arquivo.permafrost")
 
     # Iterar sem carregar tudo
-    for batch in pf.thaw_iter("arquivo.permafrost", batch_size=50_000):
+    for batch in pf.peek("arquivo.permafrost", batch_size=50_000):
         processar(batch)
     ```
 
@@ -204,7 +204,7 @@ Com um arquivo `.tar.gz` ou `.zst` contendo 10 anos de dados, você é obrigado 
 descomprimir tudo para acessar 2021. Com o Permafrost:
 
 ```python
-df_2021 = pf.thaw("historico.permafrost", filter={"ano": 2021})
+df_2021 = pf.unfreeze("historico.permafrost", filter={"ano": 2021})
 # Lê apenas 12–31% do arquivo — os outros anos nem são tocados
 ```
 

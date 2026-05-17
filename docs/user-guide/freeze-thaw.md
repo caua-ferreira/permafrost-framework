@@ -67,22 +67,22 @@ for col, manifest in info["col_predictors"].items():
 
 ---
 
-## thaw()
+## unfreeze()
 
 Descomprime um arquivo `.permafrost` de volta para `pd.DataFrame`.
 
 ```python
 # Thaw completo
-df = pf.thaw("arquivo.permafrost", verify=True)
+df = pf.unfreeze("arquivo.permafrost", verify=True)
 
 # Thaw seletivo por partição
-df_2023 = pf.thaw("arquivo.permafrost", filter={"ano": 2023})
+df_2023 = pf.unfreeze("arquivo.permafrost", filter={"ano": 2023})
 
 # Thaw por range de linhas
-df_sample = pf.thaw("arquivo.permafrost", row_range=(0, 9_999))
+df_sample = pf.unfreeze("arquivo.permafrost", row_range=(0, 9_999))
 
 # Sem verificação SHA-256 (mais rápido, para dados confiáveis)
-df = pf.thaw("arquivo.permafrost", verify=False)
+df = pf.unfreeze("arquivo.permafrost", verify=False)
 ```
 
 ### Como o sparse index funciona
@@ -151,7 +151,7 @@ O Permafrost verifica SHA-256 em 3 camadas:
 ```python
 # Corrupção é detectada ANTES da decompressão:
 try:
-    df = pf.thaw("arquivo.permafrost", verify=True)
+    df = pf.unfreeze("arquivo.permafrost", verify=True)
 except ValueError as e:
     print(e)
     # "Header SHA-256 inválido — arquivo modificado"

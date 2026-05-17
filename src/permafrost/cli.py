@@ -37,7 +37,7 @@ QUANTS = {"none": 0x00, "high": 0x01, "medium": 0x02, "low": 0x03}
 TIER_PRICES = {"s3": 0.023, "s3-ia": 0.0125, "glacier": 0.004, "glacier-deep": 0.00099}
 
 def _load():
-    from permafrost.codec import freeze as pf_freeze, thaw as pf_thaw, audit as pf_audit
+    from permafrost.codec import freeze as pf_freeze, unfreeze as pf_thaw, audit as pf_audit
     from permafrost.codec import CODEC_LZMA2, CODEC_ZSTD, QUANT_NONE, QUANT_MEDIUM
     from permafrost.schema_detector import SchemaDetector
     return pf_freeze, pf_thaw, pf_audit, SchemaDetector
@@ -127,9 +127,9 @@ def freeze(
     console.print(f"[dim]→ {output}[/]\n")
 
 
-# ── THAW ──────────────────────────────────────────────────────────────────────
+# ── UNFREEZE ──────────────────────────────────────────────────────────────────
 @app.command()
-def thaw(
+def unfreeze(
     input: str = typer.Argument(..., help="Arquivo .permafrost"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Arquivo de saída (.csv .parquet)"),
     filter_col: Optional[str] = typer.Option(None, "--filter-col", help="Coluna de filtro (ex: ano)"),
@@ -144,7 +144,7 @@ def thaw(
         console.print(f"[red]✗ Arquivo não encontrado: {input}[/]"); raise typer.Exit(1)
 
     info = pf_audit(input)
-    output = output or os.path.splitext(input)[0] + "_thawed.csv"
+    output = output or os.path.splitext(input)[0] + "_unfrozen.csv"
     ext_out = os.path.splitext(output)[1].lower()
 
     console.print(f"\n[bold]Arquivo:[/]  [cyan]{input}[/]  ({info['file_size_mb']:.3f} MB)")
@@ -182,8 +182,22 @@ def thaw(
     tbl.add_row("Saída",              f"{out_mb:.2f} MB")
     tbl.add_row("Tempo",              f"{elapsed:.3f}s")
     tbl.add_row("Verificação SHA-256",f"[green]✓[/]" if not no_verify else "[yellow]pulada[/]")
-    console.print(Panel(tbl, title="[bold green]✓ Thaw concluído[/]", border_style="green"))
+    console.print(Panel(tbl, title="[bold green]✓ Unfreeze concluído[/]", border_style="green"))
     console.print()
+
+
+@app.command(hidden=True, deprecated=True)
+def thaw(
+    input: str = typer.Argument(..., help="Arquivo .permafrost"),
+    output: Optional[str] = typer.Option(None, "--output", "-o"),
+    filter_col: Optional[str] = typer.Option(None, "--filter-col"),
+    filter_val: Optional[str] = typer.Option(None, "--filter-val"),
+    no_verify: bool = typer.Option(False, "--no-verify"),
+):
+    """Deprecated: use 'unfreeze' instead."""
+    console.print("[yellow]⚠ 'thaw' is deprecated. Use 'unfreeze' instead.[/]")
+    unfreeze(input=input, output=output, filter_col=filter_col,
+             filter_val=filter_val, no_verify=no_verify)
 
 
 # ── AUDIT ─────────────────────────────────────────────────────────────────────

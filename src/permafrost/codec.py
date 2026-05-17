@@ -607,8 +607,8 @@ def _read_sparse_index(raw):
     if _sha256(idx_json)!=idx_sha_stored: raise ValueError("Sparse index corrompido")
     return json.loads(idx_json)
 
-# ── THAW ─────────────────────────────────────────────────────────────────────
-def thaw(
+# ── UNFREEZE ──────────────────────────────────────────────────────────────────
+def unfreeze(
     path: str | os.PathLike,
     verify: bool = True,
     filter: Optional[dict] = None,
@@ -623,7 +623,7 @@ def thaw(
         path: Arquivo .permafrost a descomprimir.
         verify: Se ``True`` (padrão), verifica SHA-256 de cada chunk antes de
             descomprimir. Detecta bit-rot e corrupção antes de qualquer CPU gasto.
-        filter: Dicionário ``{coluna: valor}`` para thaw seletivo via sparse index.
+        filter: Dicionário ``{coluna: valor}`` para leitura seletiva via sparse index.
             Ex: ``{"ano": 2023}`` lê apenas os chunks que contêm dados de 2023.
             Requer que o arquivo tenha sido criado com ``partition_by=coluna``.
         row_range: Tupla ``(start, end)`` para ler apenas um range de linhas.
@@ -637,9 +637,9 @@ def thaw(
         FileNotFoundError: Se o arquivo não existir.
 
     Example:
-        >>> df_full = pf.thaw("vendas.permafrost")
-        >>> df_2023 = pf.thaw("vendas.permafrost", filter={"ano": 2023})
-        >>> df_sample = pf.thaw("vendas.permafrost", row_range=(0, 9_999))
+        >>> df_full = pf.unfreeze("vendas.permafrost")
+        >>> df_2023 = pf.unfreeze("vendas.permafrost", filter={"ano": 2023})
+        >>> df_sample = pf.unfreeze("vendas.permafrost", row_range=(0, 9_999))
     """
     from permafrost.crypto import resolve_key, decrypt_chunk
     with open(path,'rb') as f: raw=f.read()
@@ -707,6 +707,17 @@ def thaw(
         return pl.from_pandas(result)
     return result
 
+# ── DEPRECATED ALIAS ──────────────────────────────────────────────────────────
+def thaw(*args, **kwargs):
+    """Deprecated: use ``unfreeze()`` instead. Will be removed in v2.0."""
+    import warnings
+    warnings.warn(
+        "thaw() is deprecated and will be removed in v2.0. Use unfreeze() instead.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return unfreeze(*args, **kwargs)
+
+
 # ── FREEZE APPEND ─────────────────────────────────────────────────────────────
 def freeze_append(
     path: str | os.PathLike,
@@ -732,7 +743,7 @@ def freeze_append(
     Example:
         >>> pf.freeze(df_jan, "log.permafrost", codec=pf.CODEC_ZSTD, partition_by="mes")
         >>> pf.freeze_append("log.permafrost", df_feb)
-        >>> pf.thaw("log.permafrost", filter={"mes": 2})  # works across both batches
+        >>> pf.unfreeze("log.permafrost", filter={"mes": 2})  # works across both batches
     """
     t0 = time.time()
 

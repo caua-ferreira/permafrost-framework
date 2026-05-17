@@ -138,7 +138,7 @@ Para reconstruir os documentos originais:
 import permafrost as pf
 import json
 
-df = pf.thaw("posts.permafrost")
+df = pf.unfreeze("posts.permafrost")
 
 # Reconstruir documentos
 def reconstruct(row):

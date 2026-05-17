@@ -122,19 +122,19 @@ class TestThawInProcess:
     def test_thaw_basic(self, sample_pf, tmp):
         pf_path, _ = sample_pf
         out = os.path.join(tmp, "thawed.csv")
-        result = runner.invoke(app, ["thaw", pf_path, "--output", out])
+        result = runner.invoke(app, ["unfreeze", pf_path, "--output", out])
         assert result.exit_code == 0
         assert os.path.exists(out)
 
     def test_thaw_not_found(self, tmp):
-        result = runner.invoke(app, ["thaw", "/not/exist.permafrost"])
+        result = runner.invoke(app, ["unfreeze", "/not/exist.permafrost"])
         assert result.exit_code != 0
 
     def test_thaw_with_filter(self, sample_pf, tmp):
         pf_path, _ = sample_pf
         out = os.path.join(tmp, "filtered.csv")
         result = runner.invoke(app, [
-            "thaw", pf_path, "--output", out,
+            "unfreeze", pf_path, "--output", out,
             "--filter-col", "ano", "--filter-val", "2022",
         ])
         assert result.exit_code == 0
@@ -143,7 +143,7 @@ class TestThawInProcess:
     def test_thaw_parquet_output(self, sample_pf, tmp):
         pf_path, _ = sample_pf
         out = os.path.join(tmp, "thawed.parquet")
-        result = runner.invoke(app, ["thaw", pf_path, "--output", out])
+        result = runner.invoke(app, ["unfreeze", pf_path, "--output", out])
         assert result.exit_code == 0
         assert os.path.exists(out)
         df_back = pd.read_parquet(out)
@@ -152,7 +152,7 @@ class TestThawInProcess:
     def test_thaw_no_verify(self, sample_pf, tmp):
         pf_path, _ = sample_pf
         out = os.path.join(tmp, "no_verify.csv")
-        result = runner.invoke(app, ["thaw", pf_path, "--output", out, "--no-verify"])
+        result = runner.invoke(app, ["unfreeze", pf_path, "--output", out, "--no-verify"])
         assert result.exit_code == 0
         assert "pulada" in result.output or os.path.exists(out)
 

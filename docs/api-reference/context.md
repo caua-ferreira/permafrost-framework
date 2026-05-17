@@ -31,7 +31,7 @@ ctx = pf.PermafrostContext(
 # Como context manager (fecha conexões automaticamente)
 with pf.PermafrostContext(catalog="catalog.db") as ctx:
     ctx.freeze(df, "vendas_2024")
-    df = ctx.thaw("vendas_2024")
+    df = ctx.unfreeze("vendas_2024")
 ```
 
 ---
@@ -86,13 +86,13 @@ Descomprime um arquivo do storage configurado.
 
 ```python
 # Completo
-df = ctx.thaw("vendas_2024")
+df = ctx.unfreeze("vendas_2024")
 
 # Com filtro (usa sparse index — sem descomprimir chunks desnecessários)
-df_2023 = ctx.thaw("vendas_2024", filter={"ano": 2023})
+df_2023 = ctx.unfreeze("vendas_2024", filter={"ano": 2023})
 
 # Sem verificação SHA-256 (mais rápido)
-df = ctx.thaw("vendas_2024", verify=False)
+df = ctx.unfreeze("vendas_2024", verify=False)
 ```
 
 ---
@@ -202,7 +202,7 @@ metrics = ctx.freeze(df, "vendas_2024", partition_by="ano")
 print(f"Comprimido: {metrics['ratio']:.1f}× | URI: {metrics['uri']}")
 
 # Leitura seletiva (sem baixar o arquivo inteiro)
-df_2023 = ctx.thaw("vendas_2024", filter={"ano": 2023})
+df_2023 = ctx.unfreeze("vendas_2024", filter={"ano": 2023})
 
 # Buscar no catalog
 resultados = ctx.search(name="vendas", lossless_only=True)

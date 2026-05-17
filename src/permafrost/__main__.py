@@ -5,7 +5,7 @@ Uso:
   python -m permafrost master [--host HOST] [--port PORT]
   python -m permafrost worker --master URL [--host HOST] [--port PORT] [--id ID]
   python -m permafrost freeze arquivo.csv
-  python -m permafrost thaw arquivo.permafrost
+  python -m permafrost unfreeze arquivo.permafrost
 """
 import sys
 
@@ -48,15 +48,15 @@ def main():
         print(f"❄  Permafrost Worker {worker.worker_id} → {args.master}")
         worker.run(auto_register=True)
 
-    elif cmd in ("freeze", "thaw", "audit", "verify", "catalog"):
-        # Delegar para a CLI typer
+    elif cmd in ("freeze", "unfreeze", "thaw", "audit", "verify", "catalog"):
+        # Delegar para a CLI typer (thaw é alias depreciado de unfreeze)
         from permafrost.cli import app
         sys.argv = ["permafrost"] + sys.argv[1:]
         app()
 
     else:
         print(f"Comando desconhecido: {cmd}")
-        print("Comandos disponíveis: master | worker | freeze | thaw | audit | catalog")
+        print("Comandos disponíveis: master | worker | freeze | unfreeze | audit | catalog")
         sys.exit(1)
 
 

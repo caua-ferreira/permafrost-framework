@@ -15,7 +15,7 @@ from permafrost.codec import (
     _encode_with_manifest,
     decode_column,
     freeze,
-    thaw,
+    unfreeze,
     CODEC_ZSTD,
     CODEC_LZMA2,
     QUANT_NONE,
@@ -228,7 +228,7 @@ class TestFreezeThawIntegration:
             path = f.name
         try:
             freeze(df, path)
-            df2 = thaw(path)
+            df2 = unfreeze(path)
             assert len(df2) == len(df)
             for i in range(len(df)):
                 orig = json.loads(df["event"].iloc[i])
@@ -267,7 +267,7 @@ class TestFreezeThawIntegration:
             path = f.name
         try:
             freeze(df, path, predictors={"col": PRED_JSON_V2})
-            df2 = thaw(path)
+            df2 = unfreeze(path)
             assert json.loads(df2["col"].iloc[0]) == {"x": 1}
         finally:
             os.unlink(path)
@@ -282,7 +282,7 @@ class TestFreezeThawIntegration:
             path = f.name
         try:
             freeze(df, path, chunk_rows=500)
-            df2 = thaw(path)
+            df2 = unfreeze(path)
             assert len(df2) == n
             for i in range(n):
                 assert json.loads(df2["payload"].iloc[i]) == {"k": i % 10, "v": i}
@@ -295,7 +295,7 @@ class TestFreezeThawIntegration:
             path = f.name
         try:
             metrics = freeze(df, path, codec="auto")
-            df2 = thaw(path)
+            df2 = unfreeze(path)
             assert len(df2) == len(df)
         finally:
             os.unlink(path)

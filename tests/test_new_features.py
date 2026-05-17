@@ -36,7 +36,7 @@ class TestFreezeAppend:
         assert result["appended_rows"] == len(df2)
         assert result["total_rows"] == len(df1) + len(df2)
 
-        full = pf.thaw(p)
+        full = pf.unfreeze(p)
         assert len(full) == len(df1) + len(df2)
         assert set(full["ano"].unique()) == {2022, 2023, 2024}
 
@@ -48,7 +48,7 @@ class TestFreezeAppend:
         pf.freeze(df1, p, codec=pf.CODEC_ZSTD)
         pf.freeze_append(p, df2)
 
-        full = pf.thaw(p)
+        full = pf.unfreeze(p)
         pd.testing.assert_frame_equal(
             full.iloc[:len(df1)].reset_index(drop=True),
             df1.reset_index(drop=True),
@@ -64,12 +64,12 @@ class TestFreezeAppend:
         pf.freeze_append(p, df2)
 
         # filter on year that's in the appended batch
-        df_2024 = pf.thaw(p, filter={"ano": 2024})
+        df_2024 = pf.unfreeze(p, filter={"ano": 2024})
         assert len(df_2024) > 0
         assert (df_2024["ano"] == 2024).all()
 
         # filter on year from original batch
-        df_2021 = pf.thaw(p, filter={"ano": 2021})
+        df_2021 = pf.unfreeze(p, filter={"ano": 2021})
         assert len(df_2021) > 0
         assert (df_2021["ano"] == 2021).all()
 
@@ -101,7 +101,7 @@ class TestFreezeAppend:
         for year, seed in [(2021,1),(2022,2),(2023,3)]:
             pf.freeze_append(p, _make_df([year], seed=seed))
 
-        full = pf.thaw(p)
+        full = pf.unfreeze(p)
         assert len(full) == 500 * 4
         assert set(full["ano"].unique()) == {2020, 2021, 2022, 2023}
 
@@ -116,7 +116,7 @@ class TestRangeFilter:
         df = _make_df([2020, 2021, 2022, 2023, 2024])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result = pf.thaw(p, filter={"ano": (2021, 2022)})
+        result = pf.unfreeze(p, filter={"ano": (2021, 2022)})
         assert set(result["ano"].unique()).issubset({2021, 2022})
         assert len(result) > 0
 
@@ -125,7 +125,7 @@ class TestRangeFilter:
         df = _make_df([2020, 2021, 2022, 2023, 2024])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result = pf.thaw(p, filter={"ano": (2021, 2022)})
+        result = pf.unfreeze(p, filter={"ano": (2021, 2022)})
         assert 2020 not in result["ano"].values
         assert 2023 not in result["ano"].values
         assert 2024 not in result["ano"].values
@@ -135,8 +135,8 @@ class TestRangeFilter:
         df = _make_df([2020, 2021, 2022])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result_range = pf.thaw(p, filter={"ano": (2022, 2022)})
-        result_exact = pf.thaw(p, filter={"ano": 2022})
+        result_range = pf.unfreeze(p, filter={"ano": (2022, 2022)})
+        result_exact = pf.unfreeze(p, filter={"ano": 2022})
         assert len(result_range) == len(result_exact)
 
     def test_range_full_span_returns_all(self, tmp_path):
@@ -144,7 +144,7 @@ class TestRangeFilter:
         df = _make_df([2020, 2021, 2022])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result = pf.thaw(p, filter={"ano": (2020, 2022)})
+        result = pf.unfreeze(p, filter={"ano": (2020, 2022)})
         assert len(result) == len(df)
 
     def test_range_empty_returns_empty(self, tmp_path):
@@ -152,7 +152,7 @@ class TestRangeFilter:
         df = _make_df([2020, 2021, 2022])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result = pf.thaw(p, filter={"ano": (2030, 2035)})
+        result = pf.unfreeze(p, filter={"ano": (2030, 2035)})
         assert len(result) == 0
 
 
@@ -175,7 +175,7 @@ class TestPolarsIntegration:
         df_pl = polars.from_pandas(df_pd)
 
         pf.freeze(df_pl, p, codec=pf.CODEC_ZSTD, partition_by="ano")
-        result = pf.thaw(p)
+        result = pf.unfreeze(p)
 
         assert len(result) == len(df_pd)
         assert list(result.columns) == list(df_pd.columns)
@@ -187,7 +187,7 @@ class TestPolarsIntegration:
         df = _make_df([2022])
         pf.freeze(df, p, codec=pf.CODEC_ZSTD)
 
-        result = pf.thaw(p, engine='polars')
+        result = pf.unfreeze(p, engine='polars')
         assert isinstance(result, polars.DataFrame)
         assert len(result) == len(df)
 
@@ -198,7 +198,7 @@ class TestPolarsIntegration:
         df = _make_df([2022, 2023, 2024])
         pf.freeze(df.sort_values("ano"), p, codec=pf.CODEC_ZSTD, partition_by="ano")
 
-        result = pf.thaw(p, filter={"ano": 2023}, engine='polars')
+        result = pf.unfreeze(p, filter={"ano": 2023}, engine='polars')
         assert isinstance(result, polars.DataFrame)
         assert (result["ano"] == 2023).all()
 
@@ -210,7 +210,7 @@ class TestPolarsIntegration:
         df_pl = polars.from_pandas(df_pd)
 
         pf.freeze(df_pl, p, codec=pf.CODEC_ZSTD)
-        result_pd = pf.thaw(p)
+        result_pd = pf.unfreeze(p)
 
         pd.testing.assert_frame_equal(
             result_pd.reset_index(drop=True),

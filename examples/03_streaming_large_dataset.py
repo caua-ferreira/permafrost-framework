@@ -1,6 +1,6 @@
 """
 Exemplo 03 — Streaming: dataset maior que a RAM
-Demonstra freeze_stream e thaw_iter com RAM constante.
+Demonstra freeze_stream e peek com RAM constante.
 Executar: python examples/03_streaming_large_dataset.py
 """
 import permafrost as pf
@@ -48,14 +48,14 @@ print(f"\n  {m['rows']:,} linhas | {m['stored_mb']:.3f}MB | ratio={m['ratio']:.2
 # Thaw completo
 print("\n[2] thaw() completo...")
 t0 = time.time()
-df_full = pf.thaw("/tmp/streaming_demo.permafrost", verify=True)
+df_full = pf.unfreeze("/tmp/streaming_demo.permafrost", verify=True)
 print(f"  {len(df_full):,} linhas em {time.time()-t0:.3f}s")
 assert df_full["id"].iloc[0] == 1 and df_full["id"].iloc[-1] == TOTAL_ROWS
 
 # Thaw iterativo — RAM constante
-print("\n[3] thaw_iter() — sem carregar tudo...")
+print("\n[3] peek() — sem carregar tudo...")
 total_batches = 0; total_rows = 0
-for batch in pf.thaw_iter("/tmp/streaming_demo.permafrost", batch_size=30_000):
+for batch in pf.peek("/tmp/streaming_demo.permafrost", batch_size=30_000):
     total_batches += 1; total_rows += len(batch)
 print(f"  {total_batches} batches de 30k = {total_rows:,} linhas ✓")
 

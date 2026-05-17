@@ -50,7 +50,7 @@ print(f"  Comentário: {info['comment']}")
 
 # ── 4. Thaw completo ──────────────────────────────────────────────────────────
 print("\n[3] Thaw completo...")
-df_back = pf.thaw("/tmp/quickstart.permafrost", verify=True)
+df_back = pf.unfreeze("/tmp/quickstart.permafrost", verify=True)
 print(f"  Linhas: {len(df_back):,}")
 id_ok   = (df["id"].values == df_back["id"].values[:N].astype("int64")).all()
 st_ok   = (df["status"].values == df_back["status"].astype(str).values[:N]).mean() * 100
@@ -64,7 +64,7 @@ print("\n[4] Thaw seletivo (sparse index)...")
 import os
 file_size = os.path.getsize("/tmp/quickstart.permafrost")
 for ano in sorted(df["ano"].unique()):
-    df_ano = pf.thaw("/tmp/quickstart.permafrost", filter={"ano": ano})
+    df_ano = pf.unfreeze("/tmp/quickstart.permafrost", filter={"ano": ano})
     chunks_ano = [e for e in info["index_entries"] if str(ano) in e["part_key"]]
     pct = sum(e["byte_len"]+32 for e in chunks_ano) / file_size * 100
     print(f"  ano={ano}: {len(df_ano):,} linhas | {pct:.0f}% do arquivo lido")

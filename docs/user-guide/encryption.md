@@ -20,10 +20,10 @@ metrics = pf.freeze(df, "sensitive.permafrost", codec=pf.CODEC_LZMA2, key=key)
 print(metrics["encrypted"])   # True
 
 # Thaw — provide the same key
-df_back = pf.thaw("sensitive.permafrost", key=key)
+df_back = pf.unfreeze("sensitive.permafrost", key=key)
 
 # Selective read still works on encrypted files
-df_2023 = pf.thaw("sensitive.permafrost", filter={"year": 2023}, key=key)
+df_2023 = pf.unfreeze("sensitive.permafrost", filter={"year": 2023}, key=key)
 ```
 
 ---
@@ -37,7 +37,7 @@ export PERMAFROST_KEY="my-secret-key-exactly-32-bytes!!"
 ```python
 # key= is not needed when PERMAFROST_KEY is set
 metrics = pf.freeze(df, "sensitive.permafrost")
-df_back = pf.thaw("sensitive.permafrost")
+df_back = pf.unfreeze("sensitive.permafrost")
 ```
 
 ---
@@ -54,7 +54,7 @@ from permafrost import AWSKMSProvider
 provider = AWSKMSProvider(key_id="arn:aws:kms:us-east-1:123456789:key/abc-def")
 
 metrics = pf.freeze(df, "sensitive.permafrost", key_provider=provider)
-df_back = pf.thaw("sensitive.permafrost", key_provider=provider)
+df_back = pf.unfreeze("sensitive.permafrost", key_provider=provider)
 ```
 
 The encrypted DEK (Data Encryption Key) is stored in the file header. On `thaw()`, it is automatically sent to KMS for decryption — the raw key never leaves AWS.
@@ -84,8 +84,8 @@ pf.freeze_file(
     key=key,
 )
 
-# thaw_iter + encryption — read in batches without loading all into memory
-for batch in pf.thaw_iter("large_sensitive.permafrost", key=key, batch_size=50_000):
+# peek + encryption — read in batches without loading all into memory
+for batch in pf.peek("large_sensitive.permafrost", key=key, batch_size=50_000):
     process(batch)
 ```
 

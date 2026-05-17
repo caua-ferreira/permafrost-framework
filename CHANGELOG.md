@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] - 2026-05-17
+
+### Changed (breaking — old names kept as deprecated aliases until v2.0)
+- `thaw()` renamed to `unfreeze()` — clearer: the inverse of `freeze()`
+- `thaw_iter()` renamed to `peek()` — reads fragments/chunks without full load
+- `PermafrostCatalog.thaw()` → `PermafrostCatalog.unfreeze()`
+- `PermafrostContext.thaw()` → `PermafrostContext.unfreeze()`
+- CLI command `permafrost thaw` → `permafrost unfreeze`
+
+### Deprecated
+- `thaw()`, `thaw_iter()`, `cat.thaw()`, `ctx.thaw()`, `permafrost thaw` — all emit
+  `DeprecationWarning` and will be removed in v2.0
+
+### Added
+- `freeze_append()` — append rows to existing `.permafrost` without re-freezing
+- Range filter: `unfreeze(path, filter={"ano": (2021, 2022)})` for partition ranges
+- Polars support: `freeze()` accepts `polars.DataFrame`; `unfreeze(engine="polars")`
+
+---
+
+All notable changes to Permafrost Framework are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
 ## [1.0.1] - 2026-05-15
 
 ### Added

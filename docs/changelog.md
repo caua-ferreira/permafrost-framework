@@ -50,7 +50,7 @@ First stable release. All v1.0 milestones complete.
   - Detects columns with ≥70% JSON dict values automatically
   - Shared key dict per chunk reduces pre-compression bytes for long-key schemas
 - **`PermafrostContext`** — unified high-level API
-  - `ctx.freeze()`, `ctx.thaw()`, `ctx.audit()`, `ctx.list()` — catalog + storage + cluster
+  - `ctx.freeze()`, `ctx.unfreeze()`, `ctx.audit()`, `ctx.list()` — catalog + storage + cluster
   - `ctx.freeze_async()` + `ctx.wait()` — async cluster submission
   - Full catalog delegation: `search()`, `cost_report()`, `integrity_check()`, `stats()`, `sql()`
   - Context manager support (`with PermafrostContext(...) as ctx`)
@@ -145,7 +145,7 @@ First stable release. All v1.0 milestones complete.
 ### Added
 - **SchemaDetector** — automatic schema detection for CSV, JSONL, MongoDB, social media
   - Flatten: scalar fields → columns with predictors; arrays/nested → JSON string
-- **Chunk Mode**: `freeze_stream()`, `freeze_file()`, `thaw_iter()` — constant-RAM datasets
+- **Chunk Mode**: `freeze_stream()`, `freeze_file()`, `peek()` — constant-RAM datasets
 - CLI: `permafrost freeze/thaw/audit/verify/catalog` (Typer + Rich)
 
 ---

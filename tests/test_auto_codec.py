@@ -201,7 +201,7 @@ class TestFreezeAutoCodec:
         })
         path = str(tmp_path / "out.permafrost")
         pf.freeze(df, path, codec="auto")
-        df_back = pf.thaw(path)
+        df_back = pf.unfreeze(path)
         assert len(df_back) == len(df)
         assert set(df_back.columns) == set(df.columns)
 
@@ -234,7 +234,7 @@ class TestFreezeAutoCodec:
         path = str(tmp_path / "enc.permafrost")
         key = bytes(range(32))
         pf.freeze(df, path, codec="auto", key=key)
-        df_back = pf.thaw(path, key=key)
+        df_back = pf.unfreeze(path, key=key)
         assert len(df_back) == 100
 
     def test_auto_with_partition_works(self, tmp_path):
@@ -244,7 +244,7 @@ class TestFreezeAutoCodec:
         })
         path = str(tmp_path / "part.permafrost")
         pf.freeze(df, path, codec="auto", partition_by="cat")
-        df_back = pf.thaw(path, filter={"cat": "A"})
+        df_back = pf.unfreeze(path, filter={"cat": "A"})
         assert len(df_back) > 0
 
 

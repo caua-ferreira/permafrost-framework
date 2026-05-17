@@ -149,26 +149,26 @@ class TestFreezeThawEncrypted:
     def test_round_trip_bytes_key(self, sample_df, tmp_path_permafrost):
         m = pf.freeze(sample_df, tmp_path_permafrost, codec=pf.CODEC_ZSTD, key=KEY_32)
         assert m["rows"] == 500
-        df_back = pf.thaw(tmp_path_permafrost, key=KEY_32)
+        df_back = pf.unfreeze(tmp_path_permafrost, key=KEY_32)
         assert len(df_back) == 500
         assert list(df_back.columns) == list(sample_df.columns)
 
     def test_round_trip_key_provider(self, sample_df, tmp_path_permafrost):
         kp = LocalKeyProvider(KEY_32)
         pf.freeze(sample_df, tmp_path_permafrost, key=kp)
-        df_back = pf.thaw(tmp_path_permafrost, key=kp)
+        df_back = pf.unfreeze(tmp_path_permafrost, key=kp)
         assert len(df_back) == len(sample_df)
 
     def test_thaw_without_key_raises(self, sample_df, tmp_path_permafrost):
         pf.freeze(sample_df, tmp_path_permafrost, key=KEY_32)
         with pytest.raises(ValueError, match="encrypted"):
-            pf.thaw(tmp_path_permafrost)
+            pf.unfreeze(tmp_path_permafrost)
 
     def test_thaw_wrong_key_raises(self, sample_df, tmp_path_permafrost):
         pf.freeze(sample_df, tmp_path_permafrost, key=KEY_32)
         wrong = bytes([99] * 32)
         with pytest.raises(ValueError):
-            pf.thaw(tmp_path_permafrost, key=wrong)
+            pf.unfreeze(tmp_path_permafrost, key=wrong)
 
     def test_audit_shows_encrypted_true(self, sample_df, tmp_path_permafrost):
         pf.freeze(sample_df, tmp_path_permafrost, key=KEY_32)
@@ -185,18 +185,18 @@ class TestFreezeThawEncrypted:
     def test_env_var_key(self, sample_df, tmp_path_permafrost, monkeypatch):
         monkeypatch.setenv("PERMAFROST_KEY", KEY_32.hex())
         pf.freeze(sample_df, tmp_path_permafrost)
-        df_back = pf.thaw(tmp_path_permafrost)
+        df_back = pf.unfreeze(tmp_path_permafrost)
         assert len(df_back) == len(sample_df)
 
     def test_key_ignored_for_plaintext_file(self, sample_df, tmp_path_permafrost):
         # freeze without key, thaw with key — should not fail (key is ignored)
         pf.freeze(sample_df, tmp_path_permafrost)
-        df_back = pf.thaw(tmp_path_permafrost, key=KEY_32)
+        df_back = pf.unfreeze(tmp_path_permafrost, key=KEY_32)
         assert len(df_back) == len(sample_df)
 
     def test_data_fidelity(self, sample_df, tmp_path_permafrost):
         pf.freeze(sample_df, tmp_path_permafrost, key=KEY_32)
-        df_back = pf.thaw(tmp_path_permafrost, key=KEY_32)
+        df_back = pf.unfreeze(tmp_path_permafrost, key=KEY_32)
         # compare values only — codec may return Categorical vs ArrowStringArray
         for col in sample_df.columns:
             orig = sample_df[col].astype(str).reset_index(drop=True)
@@ -210,7 +210,7 @@ class TestFreezeThawEncrypted:
         })
         path = str(tmp_path / "part.permafrost")
         pf.freeze(df, path, partition_by="ano", key=KEY_32)
-        df_2023 = pf.thaw(path, filter={"ano": 2023}, key=KEY_32)
+        df_2023 = pf.unfreeze(path, filter={"ano": 2023}, key=KEY_32)
         assert all(df_2023["ano"] == 2023)
         assert len(df_2023) == 300
 
@@ -221,7 +221,7 @@ class TestFreezeThawEncrypted:
             f.seek(200)
             f.write(b"\xff")
         with pytest.raises(ValueError):
-            pf.thaw(tmp_path_permafrost, key=KEY_32)
+            pf.unfreeze(tmp_path_permafrost, key=KEY_32)
 
     def test_multiple_chunks(self, tmp_path):
         df = pd.DataFrame({"x": range(5_000)})
@@ -230,25 +230,25 @@ class TestFreezeThawEncrypted:
         info = pf.audit(path)
         assert info["n_chunks"] == 5
         assert info["encrypted"] is True
-        df_back = pf.thaw(path, key=KEY_32)
+        df_back = pf.unfreeze(path, key=KEY_32)
         assert len(df_back) == 5_000
 
 
-# ── Integration: freeze_stream + thaw_iter with encryption ────────────────────
+# ── Integration: freeze_stream + peek with encryption ────────────────────
 
 class TestStreamEncrypted:
     def test_freeze_stream_round_trip(self, tmp_path):
-        from permafrost import freeze_stream, thaw_iter
+        from permafrost import freeze_stream, peek
         chunks = [pd.DataFrame({"v": range(i * 100, (i + 1) * 100)}) for i in range(5)]
         path = str(tmp_path / "stream.permafrost")
         freeze_stream(iter(chunks), path, key=KEY_32)
-        rows = sum(len(df) for df in thaw_iter(path, key=KEY_32))
+        rows = sum(len(df) for df in peek(path, key=KEY_32))
         assert rows == 500
 
     def test_thaw_iter_without_key_raises(self, tmp_path):
-        from permafrost import freeze_stream, thaw_iter
+        from permafrost import freeze_stream, peek
         chunks = [pd.DataFrame({"v": [1, 2, 3]})]
         path = str(tmp_path / "s.permafrost")
         freeze_stream(iter(chunks), path, key=KEY_32)
         with pytest.raises(ValueError, match="encrypted"):
-            list(thaw_iter(path))
+            list(peek(path))
