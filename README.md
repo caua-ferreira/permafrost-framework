@@ -16,6 +16,8 @@
 
 *210 million rows: Permafrost + LZMA2 = 3.03 GB vs CSV = 16.35 GB (5.4×) — nearly 2× better than Parquet. Query a single year from 5 years of data: 42M rows read, only 20% of the file touched.*
 
+🌐 **English** · [Português (BR)](README.pt-BR.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh-CN.md) · [العربية](README.ar.md) · [हिन्दी](README.hi.md)
+
 [Documentation](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [API](#api-reference) · [Contributing](https://github.com/caua-ferreira/permafrost-framework/blob/main/CONTRIBUTING.md)
 
 </div>
