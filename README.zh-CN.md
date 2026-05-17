@@ -12,7 +12,7 @@
 
 *2.1亿行数据：Permafrost + LZMA2 = 3.03 GB vs CSV = 16.35 GB（5.4×）——比 Parquet 好近 2×。从5年数据中查询单年：读取4200万行，仅触及20%的文件。*
 
-🌐 [English](README.md) · [Português (BR)](README.pt-BR.md) · [Español](README.es.md) · [Français](README.fr.md) · **中文** · [العربية](README.ar.md) · [हिन्दी](README.hi.md)
+🌐 [English](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.md) · [Português (BR)](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.pt-BR.md) · [Español](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.es.md) · [Français](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.fr.md) · **中文** · [العربية](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.ar.md) · [हिन्दी](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.hi.md)
 
 [文档](https://caua-ferreira.github.io/permafrost-framework) · [快速开始](#快速开始) · [性能基准](#性能基准) · [API参考](#api-参考)
 

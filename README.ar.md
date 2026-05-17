@@ -14,7 +14,7 @@
 
 *٢١٠ مليون صف: Permafrost + LZMA2 = ٣.٠٣ جيجابايت مقابل CSV = ١٦.٣٥ جيجابايت (٥.٤×) — أفضل بما يقارب ضعفين من Parquet. استعلم عن عام واحد من بيانات خمس سنوات: قراءة ٤٢ مليون صف، مع الوصول إلى ٢٠٪ فقط من الملف.*
 
-🌐 [English](README.md) · [Português (BR)](README.pt-BR.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh-CN.md) · **العربية** · [हिन्दी](README.hi.md)
+🌐 [English](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.md) · [Português (BR)](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.pt-BR.md) · [Español](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.es.md) · [Français](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.fr.md) · [中文](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.zh-CN.md) · **العربية** · [हिन्दी](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.hi.md)
 
 [التوثيق](https://caua-ferreira.github.io/permafrost-framework) · [البدء السريع](#البدء-السريع) · [المعايير](#المعايير) · [مرجع-API](#مرجع-api)
 

@@ -12,7 +12,7 @@
 
 *210 milhões de linhas: Permafrost + LZMA2 = 3,03 GB vs CSV = 16,35 GB (5,4×) — quase 2× melhor que Parquet. Consulte um único ano em 5 anos de dados: 42 milhões de linhas lidas, apenas 20% do arquivo tocado.*
 
-🌐 [English](README.md) · **Português (BR)** · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh-CN.md) · [العربية](README.ar.md) · [हिन्दी](README.hi.md)
+🌐 [English](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.md) · **Português (BR)** · [Español](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.es.md) · [Français](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.fr.md) · [中文](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.zh-CN.md) · [العربية](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.ar.md) · [हिन्दी](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.hi.md)
 
 [Documentação](https://caua-ferreira.github.io/permafrost-framework) · [Quick Start](#início-rápido) · [Benchmarks](#benchmarks) · [API](#referência-da-api)
 

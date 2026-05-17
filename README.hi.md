@@ -12,7 +12,7 @@
 
 *21 करोड़ पंक्तियाँ: Permafrost + LZMA2 = 3.03 GB बनाम CSV = 16.35 GB (5.4×) — Parquet से लगभग 2× बेहतर। 5 साल के डेटा से एक साल की क्वेरी: 4.2 करोड़ पंक्तियाँ पढ़ी गईं, केवल 20% फ़ाइल स्पर्श की गई।*
 
-🌐 [English](README.md) · [Português (BR)](README.pt-BR.md) · [Español](README.es.md) · [Français](README.fr.md) · [中文](README.zh-CN.md) · [العربية](README.ar.md) · **हिन्दी**
+🌐 [English](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.md) · [Português (BR)](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.pt-BR.md) · [Español](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.es.md) · [Français](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.fr.md) · [中文](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.zh-CN.md) · [العربية](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.ar.md) · **हिन्दी**
 
 [दस्तावेज़ीकरण](https://caua-ferreira.github.io/permafrost-framework) · [त्वरित प्रारंभ](#त्वरित-प्रारंभ) · [बेंचमार्क](#बेंचमार्क) · [API संदर्भ](#api-संदर्भ)
 
