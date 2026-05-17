@@ -1,5 +1,7 @@
 # ❄️ Permafrost Data Framework
 
+🌐 [English](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.md) · [Português (BR)](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.pt-BR.md) · [Español](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.es.md) · [Français](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.fr.md) · [中文](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.zh-CN.md) · [العربية](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.ar.md) · [हिन्दी](https://github.com/caua-ferreira/permafrost-framework/blob/main/README.hi.md)
+
 <div class="pf-badges" markdown>
 [![PyPI version](https://img.shields.io/pypi/v/permafrost-framework.svg)](https://pypi.org/project/permafrost-framework/)
 [![Tests](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml/badge.svg)](https://github.com/caua-ferreira/permafrost-framework/actions)
