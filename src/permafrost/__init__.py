@@ -124,6 +124,15 @@ from permafrost.storage import (
     ResumableUploadError,
 )
 
+# ── Query engine (SQL over .permafrost/.pf) ──────────────────────────────────
+from permafrost.query import (
+    query,
+    register,
+    unregister,
+    registered,
+    PERMAFROST_EXTENSIONS,
+)
+
 # ── Cluster (distributed processing) ─────────────────────────────────────────
 from permafrost.cluster import (
     PermafrostMaster,
@@ -165,6 +174,9 @@ __all__ = [
     "AuthError", "RBACManager", "ClusterUser", "generate_token", "validate_token",
     # Auto codec
     "CODEC_AUTO", "DataProfile", "auto_select", "profile_dataframe",
+    # Query engine
+    "query", "register", "unregister", "registered",
+    "PERMAFROST_EXTENSIONS",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
 try:

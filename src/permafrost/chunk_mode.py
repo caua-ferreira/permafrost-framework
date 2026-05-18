@@ -6,6 +6,8 @@ from permafrost.codec import (
     _detect_predictor, _encode_chunk, _compress, _decompress,
     _parse_chunk, _read_header, _read_sparse_index,
     _sha256, _pa_schema,
+    _partition_filter, _column_filter,
+    _normalize_partition_by, _make_partition_keys,
     MAGIC, EOF_MAGIC, VERSION,
     CODEC_LZMA2, CODEC_ZSTD, CODEC_ZPAQ, QUANT_NONE, QUANT_MEDIUM,
     FLAG_DELTA, FLAG_QUANTIZE, FLAG_CHUNKED, FLAG_PREDICTOR, FLAG_INDEX, FLAG_ENCRYPTED,
@@ -24,11 +26,12 @@ def freeze_stream(
     schema_sample: Optional[pd.DataFrame] = None,
     codec: int = CODEC_LZMA2,
     quant: int = QUANT_NONE,
-    partition_by: Optional[str] = None,
+    partition_by=None,
     comment: str = "",
     retention_days: int = 0,
     progress_cb: Optional[Callable[[int, int, float], None]] = None,
     key=None,
+    primary_key=None,
 ) -> dict:
     """Comprime um iterador de DataFrames em um único arquivo ``.permafrost``.
 
@@ -74,6 +77,9 @@ def freeze_stream(
     tmp_payload = path + ".payload.tmp"
 
     # ── PASS 1: gravar chunks comprimidos em temp file ────────────────────────
+    part_cols: list = []   # resolved after first block
+    primary_col = None
+
     with open(tmp_payload, 'wb') as fout:
         cursor = 0
 
@@ -88,6 +94,11 @@ def freeze_stream(
                         cats = sample[col].astype('category')
                         manifests[col]['categories'] = list(cats.cat.categories.astype(str))
                 schema_b = _pa_schema(sample)
+                if primary_key is not None:
+                    pk_list = [primary_key] if isinstance(primary_key, str) else list(primary_key)
+                    manifests['__pk__'] = pk_list
+                part_cols = _normalize_partition_by(partition_by, sample.columns)
+                primary_col = part_cols[0] if part_cols else None
                 first_block = False
 
             chunk_start = orig_rows
@@ -98,24 +109,27 @@ def freeze_stream(
                 compressed = encrypt_chunk(compressed, raw_key)
             sha         = _sha256(compressed)
 
-            if partition_by and partition_by in block_df.columns:
-                pv = sorted(block_df[partition_by].unique().tolist())
-                part_key = str(pv[0]) if len(pv) == 1 else f"{pv[0]}-{pv[-1]}"
+            partition_keys = _make_partition_keys(block_df, part_cols)
+            if primary_col and primary_col in partition_keys:
+                part_key = partition_keys[primary_col]
             else:
                 part_key = f"rows_{chunk_start}_{chunk_end}"
 
             # byte_offset_rel: posição dos DADOS dentro do temp file
             # temp layout: [u32 len][data][sha32] — dados começam em cursor+4
-            index_entries.append({
+            entry = {
                 'chunk_id':        len(index_entries),
                 'row_start':       chunk_start,
                 'row_end':         chunk_end,
                 'part_key':        part_key,
-                'part_col':        partition_by or '__rows__',
+                'part_col':        primary_col or '__rows__',
                 '_offset_in_temp': cursor + 4,
                 'byte_len':        len(compressed),
                 'sha256':          sha.hex(),
-            })
+            }
+            if partition_keys:
+                entry['partition_keys'] = partition_keys
+            index_entries.append(entry)
             fout.write(struct.pack('>I', len(compressed)))
             fout.write(compressed)
             fout.write(sha)
@@ -189,9 +203,11 @@ def freeze_stream(
         'reduction_pct': round((1 - stored / orig_bytes_est) * 100, 2) if orig_bytes_est else 0,
         'freeze_s':      round(elapsed, 3),
         'codec':         {CODEC_LZMA2: 'lzma2', CODEC_ZSTD: 'zstd', CODEC_ZPAQ: 'zpaq'}.get(codec, '?'),
-        'partition_by':  partition_by,
+        'partition_by':  part_cols[0] if len(part_cols)==1 else (part_cols or None),
+        'partition_cols': part_cols,
         'index_entries': len(index_entries),
         'mode':          'streaming',
+        'primary_key':   manifests.get('__pk__'),
     }
 
 
@@ -205,6 +221,7 @@ def freeze_file(
     comment: str = "",
     progress_cb: Optional[Callable[[int, int, float], None]] = None,
     key=None,
+    primary_key=None,
 ) -> dict:
     """Comprime um arquivo grande (CSV ou JSONL) sem carregar tudo na RAM.
 
@@ -234,6 +251,9 @@ def freeze_file(
         output_path = os.path.splitext(input_path)[0] + ".permafrost"
     ext = os.path.splitext(input_path)[1].lower()
 
+    if ext in ('.permafrost', '.pf'):
+        raise ValueError(f"Arquivo de entrada ja e .permafrost/.pf: {input_path}")
+
     if ext == '.csv':
         schema_sample = pd.read_csv(input_path, nrows=min(1000, chunk_rows))
         def it() -> Iterator[pd.DataFrame]:
@@ -241,7 +261,8 @@ def freeze_file(
                 yield chunk
         return freeze_stream(it(), output_path, schema_sample=schema_sample,
                              codec=codec, quant=quant, partition_by=partition_by,
-                             comment=comment, progress_cb=progress_cb, key=key)
+                             comment=comment, progress_cb=progress_cb, key=key,
+                             primary_key=primary_key)
 
     elif ext in ('.jsonl', '.ndjson'):
         from permafrost.schema_detector import SchemaDetector
@@ -265,7 +286,8 @@ def freeze_file(
                 yield df_b
         return freeze_stream(it(), output_path, schema_sample=schema_df,
                              codec=codec, quant=quant, partition_by=partition_by,
-                             comment=comment, progress_cb=progress_cb, key=key)
+                             comment=comment, progress_cb=progress_cb, key=key,
+                             primary_key=primary_key)
     else:
         raise ValueError(f"Formato não suportado: {ext}")
 
@@ -318,14 +340,8 @@ def peek(
                 "Provide key= or set PERMAFROST_KEY env var."
             )
 
-    index     = _read_sparse_index(raw)
-    selected  = index
-    if filter:
-        col_f, val_f = next(iter(filter.items()))
-        val_str = str(val_f)
-        sel = [e for e in index if e['part_col'] == col_f and val_str in e['part_key']]
-        if sel:
-            selected = sel
+    index    = _read_sparse_index(raw)
+    selected = _partition_filter(index, filter) if filter else index
 
     buf_df: list = []
     buf_rows = 0
@@ -341,6 +357,11 @@ def peek(
         chunk_raw = _decompress(blob, codec)
         n_rows    = entry['row_end'] - entry['row_start'] + 1
         df_c      = _parse_chunk(chunk_raw, manifests, n_rows)
+
+        if filter:
+            df_c = _column_filter(df_c, filter)
+            if df_c.empty:
+                continue
 
         if schema_override is not None:
             from permafrost.schema_evolution import apply_schema_evolution
@@ -361,9 +382,9 @@ def peek(
         yield pd.concat(buf_df, ignore_index=True)
 
 
-# ── DEPRECATED ALIAS ──────────────────────────────────────────────────────────
+# -- DEPRECATED ALIAS ----------------------------------------------------------
 def thaw_iter(*args, **kwargs):
-    """Deprecated: use ``peek()`` instead. Will be removed in v2.0."""
+    """Deprecated: use peek() instead. Will be removed in v2.0."""
     import warnings
     warnings.warn(
         "thaw_iter() is deprecated and will be removed in v2.0. Use peek() instead.",
