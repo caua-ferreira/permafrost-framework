@@ -63,6 +63,9 @@ from permafrost.codec import (
 )
 append = freeze_append   # clean public alias
 
+# ── Schema Evolution ──────────────────────────────────────────────────────────
+from permafrost.schema import Schema, Field, SchemaError
+
 # ── Schema detection (SQL + NoSQL + JSONL) ────────────────────────────────────
 from permafrost.schema_detector import (
     SchemaDetector,
@@ -155,7 +158,9 @@ __all__ = [
     # Predictors
     "PRED_DELTA", "PRED_LAG1", "PRED_CATEGORY", "PRED_TS", "PRED_RAW",
     "PRED_FLOAT32", "PRED_FLOAT16", "PRED_JSON_V2",
-    # Schema
+    # Schema Evolution
+    "Schema", "Field", "SchemaError",
+    # Schema Detection
     "SchemaDetector", "DataType", "FieldKind",
     # Chunk mode
     "freeze_stream", "freeze_file", "peek",

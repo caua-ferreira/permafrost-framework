@@ -564,6 +564,7 @@ def freeze(
     key=None,
     predictors: Optional[dict] = None,
     primary_key=None,
+    schema=None,
 ) -> dict[str, Any]:
     """Comprime um DataFrame para o formato .permafrost.
 
@@ -661,6 +662,12 @@ def freeze(
     if primary_key is not None:
         pk_list = [primary_key] if isinstance(primary_key, str) else list(primary_key)
         manifests['__pk__'] = pk_list
+
+    # ── Schema metadata ──────────────────────────────────────────────────────
+    if schema is not None:
+        from permafrost.schema import Schema as _Schema
+        if isinstance(schema, _Schema):
+            manifests['__schema__'] = schema._to_dict()
 
     # ── Comprimir chunks ─────────────────────────────────────────────────────
     part_cols = _normalize_partition_by(partition_by, df.columns)
@@ -788,6 +795,7 @@ def unfreeze(
     row_range: Optional[tuple] = None,
     key=None,
     schema_override=None,
+    schema=None,
     engine: str = 'pandas',
     output_format: str = 'dataframe',
     sep: str = ',',
@@ -859,7 +867,11 @@ def unfreeze(
     result=pd.concat(dfs,ignore_index=True) if dfs else pd.DataFrame()
     if filter and len(result):
         result = _column_filter(result, filter)
-    if schema_override is not None:
+    if schema is not None:
+        from permafrost.schema import Schema as _Schema
+        if isinstance(schema, _Schema):
+            result = schema.apply(result)
+    elif schema_override is not None:
         from permafrost.schema_evolution import apply_schema_evolution
         result = apply_schema_evolution(result, schema_override)
     if engine == 'polars':
@@ -1128,4 +1140,6 @@ def audit(path) -> dict:
         'key_id':         h['key_id'],
         'primary_key':    h.get('primary_key'),
         'index_entries':  index_entries,
+        'schema_version': h['manifests'].get('__schema__', {}).get('version') if '__schema__' in h['manifests'] else None,
+        'schema':         h['manifests'].get('__schema__', {}).get('fields') if '__schema__' in h['manifests'] else None,
     }
