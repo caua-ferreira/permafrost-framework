@@ -3,7 +3,7 @@
 <div align="center">
 
 [![PyPI version](https://img.shields.io/pypi/v/permafrost-framework?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/permafrost-framework/)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/permafrost-framework?color=blue)](https://pypi.org/project/permafrost-framework/)
+[![Downloads](https://static.pepy.tech/badge/permafrost-framework/month)](https://pepy.tech/project/permafrost-framework)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/permafrost-framework/)
 [![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/caua-ferreira/permafrost-framework?logo=codecov)](https://codecov.io/gh/caua-ferreira/permafrost-framework)

@@ -1,0 +1,38 @@
+name: CodeQL SAST
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * 1'  # Every Monday at 01:30 UTC
+
+permissions: read-all
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@78ed0c7291d93e40c51b085850dc669a4c3ab73b  # v3
+        with:
+          languages: python
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@78ed0c7291d93e40c51b085850dc669a4c3ab73b  # v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@78ed0c7291d93e40c51b085850dc669a4c3ab73b  # v3
+        with:
+          category: "/language:python"
