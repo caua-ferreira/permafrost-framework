@@ -2,7 +2,7 @@
 Cluster Fault Tolerance — retry, workers caindo, jobs falhando, 0 workers.
 Executar: pytest tests/test_cluster_fault_tolerance.py -v
 """
-import os, shutil, tempfile, threading, time, uuid
+import os, shutil, socket, tempfile, threading, time, uuid
 import pytest
 import numpy as np
 import pandas as pd
@@ -13,19 +13,27 @@ from permafrost import PermafrostMaster, PermafrostWorker, PermafrostClient
 from permafrost.cluster import TaskStatus, JobStatus
 
 
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 @pytest.fixture(scope="module")
 def cluster_ft(tmp_path_factory):
     """Master + 2 workers dedicados para testes de fault tolerance."""
-    master = PermafrostMaster(host="127.0.0.1", port=8760)
+    mport = _free_port()
+    master_url = f"http://127.0.0.1:{mport}"
+    master = PermafrostMaster(host="127.0.0.1", port=mport)
     master.MAX_RETRIES = 3
     workers = [
-        PermafrostWorker("http://127.0.0.1:8760", host="127.0.0.1",
-                         port=8861+i, worker_id=f"ft-w{i+1:02d}")
+        PermafrostWorker(master_url, host="127.0.0.1",
+                         port=_free_port(), worker_id=f"ft-w{i+1:02d}")
         for i in range(2)
     ]
     threading.Thread(
         target=lambda: uvicorn.run(master.app, host="127.0.0.1",
-                                   port=8760, log_level="error"), daemon=True).start()
+                                   port=mport, log_level="error"), daemon=True).start()
     for w in workers:
         threading.Thread(
             target=lambda ww=w: uvicorn.run(ww.app, host="127.0.0.1",
@@ -35,7 +43,7 @@ def cluster_ft(tmp_path_factory):
         try: w.register()
         except: pass
     time.sleep(0.5)
-    client = PermafrostClient("http://127.0.0.1:8760")
+    client = PermafrostClient(master_url)
     tmp    = tmp_path_factory.mktemp("ft_data")
     yield client, master, workers, str(tmp)
 
@@ -253,8 +261,7 @@ class TestRetryMecanismo:
 
     def test_task_failed_callback_registra_erro(self, cluster_ft):
         """Simular callback de task falha e verificar que é registrado."""
-        _, master, _, _ = cluster_ft
-        import asyncio
+        client, master, _, _ = cluster_ft
 
         # Criar um job fictício no master para testar o callback
         from permafrost.cluster import Job, Task
@@ -270,7 +277,7 @@ class TestRetryMecanismo:
         # Simular falha via HTTP
         with httpx.Client(timeout=5) as c:
             r = c.post(
-                f"http://127.0.0.1:8760/jobs/{job_id}/tasks/{task_id}/failed",
+                f"{client.master_url}/jobs/{job_id}/tasks/{task_id}/failed",
                 json={"error": "SimulatedError: teste de retry"}
             )
             assert r.status_code == 200
@@ -288,16 +295,22 @@ class TestRetryMecanismo:
 # §6 CLUSTER SEM WORKERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+_solo_url: str = ""
+
+
 class TestClusterSemWorkers:
 
     def test_master_sem_workers_aceita_job(self):
         """Master sem workers deve aceitar jobs (ficam na fila)."""
-        master_solo = PermafrostMaster(host="127.0.0.1", port=8770)
+        global _solo_url
+        port = _free_port()
+        _solo_url = f"http://127.0.0.1:{port}"
+        master_solo = PermafrostMaster(host="127.0.0.1", port=port)
         threading.Thread(
             target=lambda: uvicorn.run(master_solo.app, host="127.0.0.1",
-                                       port=8770, log_level="error"), daemon=True).start()
+                                       port=port, log_level="error"), daemon=True).start()
         time.sleep(1.5)
-        client_solo = PermafrostClient("http://127.0.0.1:8770")
+        client_solo = PermafrostClient(_solo_url)
 
         h = client_solo.health()
         assert h["workers"] == 0
@@ -321,7 +334,7 @@ class TestClusterSemWorkers:
 
     def test_health_sem_workers_retorna_zero(self):
         """health() deve indicar 0 workers quando não há nenhum registrado."""
-        client_check = PermafrostClient("http://127.0.0.1:8770")
+        client_check = PermafrostClient(_solo_url)
         h = client_check.health()
         assert h.get("idle_workers", 0) == 0
 

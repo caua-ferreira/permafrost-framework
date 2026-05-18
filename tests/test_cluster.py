@@ -2,7 +2,7 @@
 Testes do PermafrostCluster — Master + Worker + Client.
 Executar: pytest tests/test_cluster.py -v
 """
-import os, time, threading
+import os, socket, time, threading
 import pytest
 import numpy as np
 import pandas as pd
@@ -11,20 +11,28 @@ import permafrost as pf
 from permafrost import PermafrostMaster, PermafrostWorker, PermafrostClient
 
 
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 @pytest.fixture(scope="module")
 def cluster(tmp_path_factory):
     """Sobe Master + 2 Workers. Retorna (client, tmp_dir)."""
     np.random.seed(42)
-    master = PermafrostMaster(host="127.0.0.1", port=8750)
+    mport = _free_port()
+    master_url = f"http://127.0.0.1:{mport}"
+    master = PermafrostMaster(host="127.0.0.1", port=mport)
     workers = [
-        PermafrostWorker("http://127.0.0.1:8750",
-                         host="127.0.0.1", port=8851+i,
+        PermafrostWorker(master_url,
+                         host="127.0.0.1", port=_free_port(),
                          worker_id=f"test-w{i+1:02d}")
         for i in range(2)
     ]
     threading.Thread(
         target=lambda: uvicorn.run(master.app, host="127.0.0.1",
-                                   port=8750, log_level="error"), daemon=True).start()
+                                   port=mport, log_level="error"), daemon=True).start()
     for w in workers:
         threading.Thread(
             target=lambda ww=w: uvicorn.run(ww.app, host="127.0.0.1",
@@ -34,7 +42,7 @@ def cluster(tmp_path_factory):
         try: w.register()
         except: pass
     time.sleep(0.5)
-    client = PermafrostClient("http://127.0.0.1:8750")
+    client = PermafrostClient(master_url)
     tmp = tmp_path_factory.mktemp("cluster_data")
     yield client, str(tmp)
 
