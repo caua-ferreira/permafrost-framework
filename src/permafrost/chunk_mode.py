@@ -8,10 +8,11 @@ from permafrost.codec import (
     _sha256, _pa_schema,
     _partition_filter, _column_filter,
     _normalize_partition_by, _make_partition_keys,
+    _name_to_codec, _select_codec_for_column,
     MAGIC, EOF_MAGIC, VERSION,
-    CODEC_LZMA2, CODEC_ZSTD, CODEC_ZPAQ, QUANT_NONE, QUANT_MEDIUM,
+    CODEC_NONE, CODEC_LZMA2, CODEC_ZSTD, CODEC_ZPAQ, QUANT_NONE, QUANT_MEDIUM,
     FLAG_DELTA, FLAG_QUANTIZE, FLAG_CHUNKED, FLAG_PREDICTOR, FLAG_INDEX, FLAG_ENCRYPTED,
-    decode_column,
+    decode_column, _CODEC_NAME,
 )
 from permafrost.crypto import resolve_key, encrypt_chunk, decrypt_chunk
 import struct, json, time, os
@@ -32,6 +33,8 @@ def freeze_stream(
     progress_cb: Optional[Callable[[int, int, float], None]] = None,
     key=None,
     primary_key=None,
+    per_column_codec: Optional[dict] = None,
+    codec_profile: Optional[str] = None,
 ) -> dict:
     """Comprime um iterador de DataFrames em um único arquivo ``.permafrost``.
 
@@ -64,6 +67,10 @@ def freeze_stream(
     """
     raw_key, kms_name, kid, edek = resolve_key(key)
 
+    # Normalize string codec
+    if isinstance(codec, str) and codec != "auto":
+        codec = _name_to_codec(codec)
+
     t0 = time.time()
     flags = FLAG_PREDICTOR | FLAG_DELTA | FLAG_CHUNKED | FLAG_INDEX | (FLAG_QUANTIZE if quant else 0)
     if raw_key is not None:
@@ -79,6 +86,7 @@ def freeze_stream(
     # ── PASS 1: gravar chunks comprimidos em temp file ────────────────────────
     part_cols: list = []   # resolved after first block
     primary_col = None
+    _outer_codec = codec
 
     with open(tmp_payload, 'wb') as fout:
         cursor = 0
@@ -97,6 +105,19 @@ def freeze_stream(
                 if primary_key is not None:
                     pk_list = [primary_key] if isinstance(primary_key, str) else list(primary_key)
                     manifests['__pk__'] = pk_list
+                # Build per-column codec map
+                if codec_profile is not None or per_column_codec is not None:
+                    _col_codecs: dict[str, int] = {}
+                    for col in sample.columns:
+                        if per_column_codec and col in per_column_codec:
+                            c = per_column_codec[col]
+                            _col_codecs[col] = _name_to_codec(c) if isinstance(c, str) else int(c)
+                        elif codec_profile is not None:
+                            _col_codecs[col] = _select_codec_for_column(col, sample[col], codec_profile)
+                        else:
+                            _col_codecs[col] = codec if isinstance(codec, int) else CODEC_ZSTD
+                    manifests['__col_codecs__'] = _col_codecs
+                    _outer_codec = CODEC_NONE
                 part_cols = _normalize_partition_by(partition_by, sample.columns)
                 primary_col = part_cols[0] if part_cols else None
                 first_block = False
@@ -104,7 +125,7 @@ def freeze_stream(
             chunk_start = orig_rows
             chunk_end   = orig_rows + len(block_df) - 1
             raw_chunk   = _encode_chunk(block_df.reset_index(drop=True), manifests, quant)
-            compressed  = _compress(raw_chunk, codec)
+            compressed  = _compress(raw_chunk, _outer_codec)
             if raw_key is not None:
                 compressed = encrypt_chunk(compressed, raw_key)
             sha         = _sha256(compressed)
@@ -153,7 +174,7 @@ def freeze_stream(
     hdr = b''.join([
         MAGIC, VERSION,
         struct.pack('>H', flags),
-        struct.pack('>B', codec), struct.pack('>B', quant),
+        struct.pack('>B', _outer_codec), struct.pack('>B', quant),
         struct.pack('>H', len(index_entries)),
         struct.pack('>I', DEFAULT_STREAM_CHUNK),
         struct.pack('>I', len(schema_b)), schema_b,
@@ -202,7 +223,7 @@ def freeze_stream(
         'ratio':         round(orig_bytes_est / stored, 3) if stored else 1,
         'reduction_pct': round((1 - stored / orig_bytes_est) * 100, 2) if orig_bytes_est else 0,
         'freeze_s':      round(elapsed, 3),
-        'codec':         {CODEC_LZMA2: 'lzma2', CODEC_ZSTD: 'zstd', CODEC_ZPAQ: 'zpaq'}.get(codec, '?'),
+        'codec':         _CODEC_NAME.get(_outer_codec, '?'),
         'partition_by':  part_cols[0] if len(part_cols)==1 else (part_cols or None),
         'partition_cols': part_cols,
         'index_entries': len(index_entries),

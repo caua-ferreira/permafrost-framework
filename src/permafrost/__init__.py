@@ -40,9 +40,12 @@ from permafrost.codec import (
     thaw,        # deprecated alias → unfreeze
     audit,
     # Codec IDs
+    CODEC_NONE,
     CODEC_ZSTD,
     CODEC_LZMA2,
     CODEC_ZPAQ,
+    # Per-column codec profiles
+    CODEC_PROFILES,
     # Quantization levels
     QUANT_NONE,
     QUANT_HIGH,
@@ -152,7 +155,8 @@ __all__ = [
     "freeze", "freeze_append", "append", "unfreeze", "audit",
     "thaw",          # deprecated alias
     # Codecs
-    "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
+    "CODEC_NONE", "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
+    "CODEC_PROFILES",
     # Quant levels
     "QUANT_NONE", "QUANT_HIGH", "QUANT_MEDIUM", "QUANT_LOW",
     # Predictors

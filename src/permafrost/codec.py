@@ -11,7 +11,7 @@ import zstandard as zstd
 
 MAGIC = b'PRMS'; EOF_MAGIC = b'SMRP'; VERSION = bytes([1, 3])
 PERMAFROST_EXTENSIONS = ('.permafrost', '.pf')
-CODEC_ZSTD=0x01; CODEC_LZMA2=0x02; CODEC_ZPAQ=0x03
+CODEC_NONE=0x00; CODEC_ZSTD=0x01; CODEC_LZMA2=0x02; CODEC_ZPAQ=0x03
 QUANT_NONE=0x00; QUANT_HIGH=0x01; QUANT_MEDIUM=0x02; QUANT_LOW=0x03
 FLAG_DELTA=0x01; FLAG_QUANTIZE=0x02; FLAG_CHUNKED=0x04
 FLAG_PREDICTOR=0x08; FLAG_INDEX=0x10; FLAG_ENCRYPTED=0x20
@@ -242,7 +242,10 @@ def _encode_chunk(df_chunk, manifests, quant):
     """
     Serializa chunk usando manifestos já definidos (ou define na 1ª chamada).
     BUG FIX: o predictor é detectado apenas se ainda não está no manifesto.
+    Quando __col_codecs__ está no manifesto, cada coluna é comprimida
+    individualmente antes de ser empacotada.
     """
+    col_codecs = manifests.get('__col_codecs__', {})
     payload=struct.pack('>H',len(df_chunk.columns))
     for col in df_chunk.columns:
         # 1ª passagem: definir manifesto com série COMPLETA já foi feita antes
@@ -252,13 +255,64 @@ def _encode_chunk(df_chunk, manifests, quant):
             manifests[col]=_detect_predictor(col,df_chunk[col],quant)
 
         enc=_encode_with_manifest(df_chunk[col],manifests[col],quant)
+        if col_codecs:
+            enc = _compress(enc, col_codecs.get(col, CODEC_ZSTD))
         nb=col.encode()
         payload+=struct.pack('>B',len(nb))+nb
         payload+=struct.pack('>I',len(enc))+enc
     return payload
 
+CODEC_PROFILES = {
+    "balanced":        "zstd for numbers/datetime, lzma2 for strings",
+    "max_compression": "lzma2 for all columns",
+    "max_speed":       "zstd for all columns",
+    "auto":            "auto-detect by dtype and cardinality",
+}
+
+_CODEC_FROM_NAME: dict[str, int] = {
+    "none":  CODEC_NONE,
+    "zstd":  CODEC_ZSTD,
+    "lzma2": CODEC_LZMA2,
+    "zpaq":  CODEC_ZPAQ,
+}
+
+
+def _name_to_codec(name: str) -> int:
+    return _CODEC_FROM_NAME.get(name.lower(), CODEC_ZSTD)
+
+
+def _select_codec_for_column(col: str, series: 'pd.Series', profile: str) -> int:
+    if profile == "max_compression":
+        return CODEC_LZMA2
+    if profile == "max_speed":
+        return CODEC_ZSTD
+    # numeric and datetime: predictor already helps a lot → zstd is fine
+    if pd.api.types.is_integer_dtype(series) or pd.api.types.is_float_dtype(series):
+        return CODEC_ZSTD
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return CODEC_ZSTD
+    # string / object / category — check average length first
+    try:
+        avg_len = series.dropna().astype(str).str.len().mean()
+    except Exception:
+        avg_len = 0.0
+    # long text → lzma2 regardless of cardinality
+    if avg_len > 50:
+        return CODEC_LZMA2
+    # short strings: low cardinality → category_u8 + zstd is enough
+    n = len(series)
+    if n > 0 and (hasattr(series, 'cat') or series.nunique() / n < 0.1):
+        return CODEC_ZSTD
+    if profile == "balanced":
+        return CODEC_LZMA2
+    # auto: already checked length above
+    return CODEC_ZSTD
+
+
 def _compress(data: bytes, codec: int) -> bytes:
     """Comprime bytes usando o codec especificado."""
+    if codec == CODEC_NONE:
+        return data
     if codec == CODEC_LZMA2:
         return lzma.compress(data, format=lzma.FORMAT_XZ,
                              preset=lzma.PRESET_EXTREME | 9)
@@ -269,6 +323,8 @@ def _compress(data: bytes, codec: int) -> bytes:
 
 def _decompress(data: bytes, codec: int) -> bytes:
     """Descomprime bytes usando o codec especificado."""
+    if codec == CODEC_NONE:
+        return data
     if codec == CODEC_LZMA2:
         return lzma.decompress(data, format=lzma.FORMAT_XZ)
     if codec == CODEC_ZPAQ:
@@ -360,13 +416,17 @@ def _pa_schema(df):
     except: return b'{}'
 
 def _parse_chunk(data,manifests,n_rows):
+    col_codecs = manifests.get('__col_codecs__', {})
     p=0; n_cols=struct.unpack_from('>H',data,p)[0]; p+=2
     col_data={}
     for _ in range(n_cols):
         nl=struct.unpack_from('>B',data,p)[0]; p+=1
         cn=data[p:p+nl].decode(); p+=nl
         sl=struct.unpack_from('>I',data,p)[0]; p+=4
-        col_data[cn]=data[p:p+sl]; p+=sl
+        raw=data[p:p+sl]; p+=sl
+        if col_codecs and cn in col_codecs:
+            raw = _decompress(raw, col_codecs[cn])
+        col_data[cn]=raw
     series={}
     for col,m in manifests.items():
         if col.startswith('__'): continue
@@ -565,6 +625,8 @@ def freeze(
     predictors: Optional[dict] = None,
     primary_key=None,
     schema=None,
+    per_column_codec: Optional[dict] = None,
+    codec_profile: Optional[str] = None,
 ) -> dict[str, Any]:
     """Comprime um DataFrame para o formato .permafrost.
 
@@ -623,6 +685,10 @@ def freeze(
     if type(df).__module__.startswith('polars'):
         df = df.to_pandas()
 
+    # Normalize string codec names (except "auto" which is handled below)
+    if isinstance(codec, str) and codec != "auto":
+        codec = _name_to_codec(codec)
+
     _auto_reason: Optional[str] = None
     if codec == "auto":
         from permafrost.auto_codec import auto_select as _auto_select
@@ -669,6 +735,21 @@ def freeze(
         if isinstance(schema, _Schema):
             manifests['__schema__'] = schema._to_dict()
 
+    # ── Per-column codec map ─────────────────────────────────────────────────
+    _outer_codec = codec
+    if codec_profile is not None or per_column_codec is not None:
+        _col_codecs: dict[str, int] = {}
+        for col in df.columns:
+            if per_column_codec and col in per_column_codec:
+                c = per_column_codec[col]
+                _col_codecs[col] = _name_to_codec(c) if isinstance(c, str) else int(c)
+            elif codec_profile is not None:
+                _col_codecs[col] = _select_codec_for_column(col, df[col], codec_profile)
+            else:
+                _col_codecs[col] = codec if isinstance(codec, int) else CODEC_ZSTD
+        manifests['__col_codecs__'] = _col_codecs
+        _outer_codec = CODEC_NONE  # per-column data already compressed inside _encode_chunk
+
     # ── Comprimir chunks ─────────────────────────────────────────────────────
     part_cols = _normalize_partition_by(partition_by, df.columns)
     primary_col = part_cols[0] if part_cols else None
@@ -678,7 +759,7 @@ def freeze(
         chunk_end=min(chunk_start+chunk_rows,orig_rows)
         df_chunk=df.iloc[chunk_start:chunk_end].reset_index(drop=True)
         raw_chunk=_encode_chunk(df_chunk,manifests,quant)
-        compressed=_compress(raw_chunk,codec)
+        compressed=_compress(raw_chunk,_outer_codec)
         if raw_key is not None:
             compressed = encrypt_chunk(compressed, raw_key)
         sha=_sha256(compressed)
@@ -709,7 +790,7 @@ def freeze(
                     struct.pack('>B', len(kid)) + kid.encode() +
                     struct.pack('>H', len(edek)) + edek)
 
-    hdr=b''.join([MAGIC,VERSION,struct.pack('>H',flags),struct.pack('>B',codec),
+    hdr=b''.join([MAGIC,VERSION,struct.pack('>H',flags),struct.pack('>B',_outer_codec),
         struct.pack('>B',quant),struct.pack('>H',len(chunk_blobs)),
         struct.pack('>I',chunk_rows),struct.pack('>I',len(schema_b)),schema_b,
         struct.pack('>I',len(manifest_b)),manifest_b,
@@ -736,17 +817,21 @@ def freeze(
 
     elapsed=time.time()-t0; stored=os.path.getsize(path)
     pk_list = manifests.get('__pk__', None)
+    _per_col = _outer_codec == CODEC_NONE
+    _col_codecs_out = manifests.get('__col_codecs__', None)
     result = {'path':path,'rows':orig_rows,'cols':len(df.columns),
             'n_chunks':len(chunk_blobs),'chunk_rows':chunk_rows,
             'original_mb':round(orig_bytes/1e6,3),'stored_mb':round(stored/1e6,3),
             'ratio':round(orig_bytes/stored,3),
             'reduction_pct':round((1-stored/orig_bytes)*100,2),
             'freeze_s':round(elapsed,3),
-            'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(codec,'?'),
+            'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq',CODEC_NONE:'none'}.get(_outer_codec,'?'),
             'partition_by': part_cols[0] if len(part_cols)==1 else (part_cols or None),
             'partition_cols': part_cols,
             'primary_key': pk_list,
-            'index_entries':len(index_entries)}
+            'index_entries':len(index_entries),
+            'per_col_codec': _per_col,
+            'col_codecs': {k: {CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq',CODEC_NONE:'none'}.get(v,str(v)) for k,v in _col_codecs_out.items()} if _col_codecs_out else None,}
     if _auto_reason is not None:
         result['auto_reason'] = _auto_reason
     return result
@@ -956,8 +1041,8 @@ def freeze_append(
 
     index_entries = _read_sparse_index(raw)
 
-    # Validate column compatibility
-    existing_cols = set(h['manifests'].keys())
+    # Validate column compatibility (exclude internal __ keys)
+    existing_cols = {k for k in h['manifests'].keys() if not k.startswith('__')}
     new_cols = set(df_new.columns)
     if existing_cols != new_cols:
         raise ValueError(
@@ -1068,7 +1153,7 @@ def freeze_append(
 
 
 # ── AUDIT ─────────────────────────────────────────────────────────────────────
-_CODEC_NAME = {CODEC_ZSTD: 'zstd', CODEC_LZMA2: 'lzma2', CODEC_ZPAQ: 'zpaq'}
+_CODEC_NAME = {CODEC_NONE: 'none', CODEC_ZSTD: 'zstd', CODEC_LZMA2: 'lzma2', CODEC_ZPAQ: 'zpaq'}
 
 
 def audit(path) -> dict:
@@ -1145,4 +1230,6 @@ def audit(path) -> dict:
         'stored_schema':  {k: v.get('dtype', 'object') for k, v in h['manifests'].items() if not k.startswith('__')},
         'lossy_columns':  {k: {'predictor': v.get('predictor'), 'precision_bits': v.get('precision_bits', 32), 'max_abs_error': v.get('max_abs_error', 0.0)} for k, v in h['manifests'].items() if not k.startswith('__') and v.get('predictor') in (PRED_FLOAT32, PRED_FLOAT16)},
         'edek_size':      len(h['enc_dek']),
+        'per_col_codec':  '__col_codecs__' in h['manifests'],
+        'col_codecs':     {k: _CODEC_NAME.get(v, str(v)) for k, v in h['manifests']['__col_codecs__'].items()} if '__col_codecs__' in h['manifests'] else None,
     }
