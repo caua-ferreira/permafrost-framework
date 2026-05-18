@@ -61,6 +61,7 @@ from permafrost.codec import (
     MAGIC,
     EOF_MAGIC,
 )
+append = freeze_append   # clean public alias
 
 # ── Schema detection (SQL + NoSQL + JSONL) ────────────────────────────────────
 from permafrost.schema_detector import (
@@ -142,7 +143,7 @@ from permafrost.cluster import (
 
 __all__ = [
     # Core
-    "freeze", "unfreeze", "audit",
+    "freeze", "freeze_append", "append", "unfreeze", "audit",
     "thaw",          # deprecated alias
     # Codecs
     "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",

@@ -958,7 +958,15 @@ def freeze_append(
     quant      = h['quant']
     chunk_rows = h['chunk_rows']
     orig_rows  = h['orig_rows']
-    partition_col = index_entries[0]['part_col'] if index_entries else '__rows__'
+    first_entry = index_entries[0] if index_entries else {}
+    primary_col = first_entry.get('part_col', '__rows__')
+    # Multi-col partition: read partition_keys keys from first entry
+    if 'partition_keys' in first_entry:
+        part_cols = list(first_entry['partition_keys'].keys())
+    elif primary_col != '__rows__':
+        part_cols = [primary_col]
+    else:
+        part_cols = []
 
     # Find where chunks section ends (= start of sparse index JSON)
     idx_len = struct.unpack('>I', raw[-4-32-4:-4-32])[0]
@@ -983,23 +991,26 @@ def freeze_append(
         compressed  = _compress(raw_chunk, codec)
         sha         = _sha256(compressed)
 
-        if partition_col != '__rows__' and partition_col in df_chunk.columns:
-            pv = sorted(df_chunk[partition_col].unique().tolist())
-            part_key = str(pv[0]) if len(pv)==1 else f"{pv[0]}-{pv[-1]}"
+        partition_keys = _make_partition_keys(df_chunk, part_cols) if part_cols else {}
+        if primary_col != '__rows__' and primary_col in partition_keys:
+            part_key = partition_keys[primary_col]
         else:
             r0 = orig_rows + chunk_start
             part_key = f"rows_{r0}_{r0 + chunk_end - chunk_start - 1}"
 
-        new_index_entries.append({
-            'chunk_id':   len(index_entries) + len(new_chunk_blobs),
-            'row_start':  orig_rows + chunk_start,
-            'row_end':    orig_rows + chunk_end - 1,
-            'part_key':   part_key,
-            'part_col':   partition_col,
+        entry = {
+            'chunk_id':    len(index_entries) + len(new_chunk_blobs),
+            'row_start':   orig_rows + chunk_start,
+            'row_end':     orig_rows + chunk_end - 1,
+            'part_key':    part_key,
+            'part_col':    primary_col,
             'byte_offset': None,
-            'byte_len':   len(compressed),
-            'sha256':     sha.hex(),
-        })
+            'byte_len':    len(compressed),
+            'sha256':      sha.hex(),
+        }
+        if partition_keys:
+            entry['partition_keys'] = partition_keys
+        new_index_entries.append(entry)
         new_chunk_blobs.append((compressed, sha))
 
     # Calculate byte offsets for new chunks in the rewritten file
