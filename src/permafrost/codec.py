@@ -1142,4 +1142,5 @@ def audit(path) -> dict:
         'index_entries':  index_entries,
         'schema_version': h['manifests'].get('__schema__', {}).get('version') if '__schema__' in h['manifests'] else None,
         'schema':         h['manifests'].get('__schema__', {}).get('fields') if '__schema__' in h['manifests'] else None,
+        'stored_schema':  {k: v.get('dtype', 'object') for k, v in h['manifests'].items() if not k.startswith('__')},
     }
