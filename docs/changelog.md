@@ -6,6 +6,93 @@ Versioning follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ---
 
+## [1.3.0] — 2026-05-18
+
+### Added
+- **Per-column codec** (`per_column_codec`, `codec_profile`)
+  - Assign a different codec to each column: `freeze(df, path, per_column_codec={"col": "lzma2"})`
+  - `codec_profile` presets: `balanced` / `max_compression` / `max_speed` / `auto`
+  - `auto` profile samples 1000 rows per column and picks the best codec automatically
+- **Catalog remote backends** (`catalog_backends.py`)
+  - `CatalogBackend` ABC with `resolve_path()` and `upload()` interface
+  - `LocalCatalogBackend` — default, resolves `os.path.abspath`
+  - `S3CatalogBackend` — ETag-based cache validation + LRU eviction by byte budget
+  - `GCSCatalogBackend` / `AzureCatalogBackend` — TTL-based cache
+  - `PermafrostCatalog(db, backend=...)` — inject backend at construction or via `.configure()`
+- **Catalog versioning**
+  - `catalog.register(path, name="ds", version="v2024")` — stores version string per entry
+  - `catalog.versions(name)` — returns a DataFrame with full version history
+  - `catalog.unfreeze(name, version="v2024")` — selects a specific version
+- **Remote query backend** — `pf.set_query_backend(backend)` resolves `s3://` aliases before querying
+- **OpenSSF Scorecard improvements**
+  - All GitHub Actions pinned to full SHAs (Pinned-Dependencies)
+  - Explicit `permissions: read-all` on all workflows (Token-Permissions)
+  - CodeQL SAST workflow added (SAST check)
+  - `SECURITY.md` — vulnerability reporting policy (Security-Policy)
+  - `dependabot.yml` — weekly pip + actions updates (Dependency-Update-Tool)
+- **PyPI downloads badge** — migrated from rate-limited `img.shields.io` to `static.pepy.tech`
+
+### Changed
+- CI workflows chain: `docker.yml`, `publish.yml`, `release.yml` now trigger via `workflow_run` only after `tests.yml` passes
+- Test suite: **1261 passed**, 9 skipped, **93% coverage**
+
+---
+
+## [1.2.1] — 2026-05-18
+
+### Added
+- **Diff engine** — `pf.diff(path_a, path_b)` reports added / removed / changed rows at chunk resolution
+- **SQL query engine** — `pf.query(sql)` runs DuckDB SQL over registered `.permafrost` aliases
+  - `pf.register(alias, path)` / `pf.unregister(alias)` / `pf.registered()`
+  - Supports local paths and `s3://` URIs (with `set_query_backend`)
+- **Schema Evolution** — `pf.Schema`, `pf.Field`, `schema_diff()`
+  - `thaw(schema_override=target_schema)` auto-casts to newer schema
+  - New columns → fill with null; removed columns → silently dropped; compatible types → cast
+
+---
+
+## [1.2.0] — 2026-05-17
+
+### Added
+- **`primary_key`** parameter on `freeze()` — declares the identity column for diff operations
+- **`.pf` alias** — `import permafrost as pf` is now the canonical import style; all docs updated
+- **`output_format`** on `unfreeze()` — `"xlsx"` and `"csv"` output without loading into memory
+- **`partition_by` multi-column** — `freeze(df, path, partition_by=["year", "region"])`
+- **`pf.append(df, path)`** — incremental writes; appends chunks without re-freezing the whole file
+
+---
+
+## [1.1.4] — 2026-05-16
+
+### Fixed
+- `audit()` — `lossy_columns` and `edek_size` now included in return dict
+- `audit()` — `stored_schema` (Arrow schema as JSON string) added to return dict
+- CI — `openpyxl` added to dev dependencies for xlsx export tests
+
+---
+
+## [1.1.3] — 2026-05-16
+
+### Fixed
+- Cluster fault-tolerance fixtures now use dynamic port allocation — eliminates `WinError 10048` when running parallel test sessions
+
+---
+
+## [1.1.2] — 2026-05-15
+
+### Added
+- CI ordering — `docker.yml`, `publish.yml`, `release.yml` chain via `workflow_run` after `tests.yml`
+
+---
+
+## [1.1.1] — 2026-05-15
+
+### Added
+- Multi-language READMEs (pt-BR, es, fr, zh-CN, ar, hi) with language selector
+- `CONTRIBUTING.md` — development setup, PR guidelines, commit conventions
+
+---
+
 ## [1.0.0] — 2026-05-15
 
 First stable release. All v1.0 milestones complete.

@@ -50,11 +50,17 @@ Query only year 2022 → 42M rows in 5.7 min — read 20% of the file, 80% never
 ## Features
 
 - **High compression** — column predictors (delta_zigzag, lag1_zigzag, ts_delta_s, category_u8, raw_text) before Zstd / LZMA2 / ZPAQ
+- **Per-column codec** — assign different codecs to each column; `codec_profile` presets (balanced / max_compression / max_speed / auto)
 - **Selective reads** — embedded sparse index enables `filter={"year": 2023}` without decompressing the rest
+- **SQL query engine** — `pf.query("SELECT … FROM alias")` via DuckDB; register aliases with `pf.register()`
+- **Diff engine** — `pf.diff(path_a, path_b)` reports added / removed / changed rows at chunk level
+- **Incremental writes** — `pf.append(df, path)` adds data without re-freezing the whole file
+- **Schema evolution** — `pf.Schema` / `pf.Field` contract; auto-cast on thaw, `schema_diff()` for migration planning
 - **Guaranteed integrity** — SHA-256 per chunk, verified before any decompression
 - **Self-describing** — full Arrow schema embedded in the file; readable in 2040 without external documentation
 - **Cloud-native** — native support for S3, Google Cloud Storage and Azure Blob Storage with HTTP Range Requests
-- **DuckDB Catalog** — metadata search across hundreds of remote files without downloading any of them
+- **Remote catalog backends** — `S3CatalogBackend`, `GCSCatalogBackend`, `AzureCatalogBackend` with ETag cache and LRU eviction
+- **DuckDB Catalog** — metadata search across hundreds of remote files; versioned datasets with `version=` and `.versions()`
 - **Streaming** — process datasets larger than RAM with `freeze_file()` and `peek()`
 - **Distributed cluster** — Master + Workers via FastAPI; processes 1 TB in parallel with N workers
 - **Spark DataSource v2** — native integration with PySpark 4.0+ with sparse index pushdown
@@ -134,6 +140,36 @@ df_2023 = pf.thaw_from("s3://my-bucket/data/sales.permafrost", filter={"year": 2
 info = pf.audit_remote("s3://my-bucket/data/sales.permafrost")
 ```
 
+### Per-column codec
+
+```python
+# Assign a different codec to each column
+metrics = pf.freeze(df, "sales.permafrost", per_column_codec={
+    "id":    "zstd",    # fast for integer keys
+    "notes": "lzma2",  # better ratio for free text
+    "value": "zstd",
+})
+
+# Or use a preset profile
+metrics = pf.freeze(df, "sales.permafrost", codec_profile="max_compression")
+# profiles: "balanced" | "max_compression" | "max_speed" | "auto"
+```
+
+### SQL query engine
+
+```python
+pf.register("sales", "sales.permafrost")
+pf.register("returns", "returns.permafrost")
+
+df = pf.query("""
+    SELECT s.year, SUM(s.value) - SUM(r.value) AS net
+    FROM sales s
+    JOIN returns r ON s.year = r.year
+    GROUP BY s.year
+    ORDER BY s.year
+""")
+```
+
 ### Catalog — search across multiple files
 
 ```python
@@ -143,11 +179,37 @@ cat.register_dir("s3://my-bucket/cold/")   # indexes metadata without downloadin
 # Search by name, codec, lossless
 results = cat.search(name="sales", lossless_only=True)
 
+# Register with version and retrieve by version
+cat.register("sales_2024.permafrost", name="sales", version="v2024")
+cat.register("sales_2023.permafrost", name="sales", version="v2023")
+df_v2023 = cat.unfreeze("sales", version="v2023")
+history  = cat.versions("sales")   # DataFrame with all registered versions
+
+# Remote backend — resolve S3/GCS/Azure paths transparently
+from permafrost import S3CatalogBackend
+cat = pf.PermafrostCatalog("catalog.db", backend=S3CatalogBackend(bucket="my-bucket"))
+cat.register("s3://my-bucket/cold/sales.permafrost", name="sales")
+
 # Estimated cost report for Glacier Deep Archive
 cat.cost_report("glacier_deep")
 
 # Bulk integrity check
 cat.integrity_check()
+```
+
+### Diff engine
+
+```python
+report = pf.diff("sales_v1.permafrost", "sales_v2.permafrost")
+print(report)
+# {"added_rows": 5000, "removed_rows": 200, "changed_rows": 47, "chunks_changed": 3}
+```
+
+### Incremental writes
+
+```python
+pf.freeze(df_2023, "history.permafrost")
+pf.append(df_2024, "history.permafrost")   # adds without re-freezing
 ```
 
 ### Distributed Cluster
@@ -283,9 +345,21 @@ The format is self-describing — readable without external documentation:
 
 | Function | Description |
 |----------|-------------|
-| `pf.freeze(df, path, ...)` | Compress a DataFrame to a `.permafrost` file |
+| `pf.freeze(df, path, ...)` | Compress a DataFrame; accepts `codec_profile` and `per_column_codec` |
 | `pf.unfreeze(path, filter=None, verify=False)` | Decompress; `filter` uses sparse index |
+| `pf.append(df, path)` | Append rows to an existing file without re-freezing |
 | `pf.audit(path)` | Returns metadata without decompressing |
+| `pf.diff(path_a, path_b)` | Row-level diff between two `.permafrost` files |
+
+### Query engine
+
+| Function | Description |
+|----------|-------------|
+| `pf.register(alias, path)` | Register a file (local or `s3://`) under a SQL alias |
+| `pf.unregister(alias)` | Remove a registered alias |
+| `pf.registered()` | Returns all active alias → path mappings |
+| `pf.query(sql)` | Run a SQL query over registered files via DuckDB |
+| `pf.set_query_backend(backend)` | Set a remote backend for resolving `s3://` aliases |
 
 ### Streaming
 
@@ -308,11 +382,19 @@ The format is self-describing — readable without external documentation:
 
 | Class/Method | Description |
 |--------------|-------------|
-| `PermafrostCatalog(db_path)` | Create or open a DuckDB catalog |
+| `PermafrostCatalog(db_path, backend=None)` | Create or open a DuckDB catalog; optional remote backend |
+| `.configure(backend)` | Replace the active storage backend at runtime |
+| `.register(path, name=None, version=None)` | Register a file; `version=` enables versioned datasets |
 | `.register_dir(path_or_uri)` | Index all `.permafrost` files in a directory |
-| `.search(name, lossless_only, codec)` | Search by metadata |
+| `.versions(name)` | Returns a DataFrame with all registered versions of a dataset |
+| `.unfreeze(name, version=None)` | Decompress; `version=` selects a specific registered version |
+| `.search(name, lossless_only, codec, tags_contain)` | Search by metadata |
 | `.cost_report(tier)` | Estimate monthly cost by storage tier |
 | `.integrity_check()` | Verify SHA-256 of all indexed files |
+| `LocalCatalogBackend()` | Default backend — resolves local paths |
+| `S3CatalogBackend(bucket)` | Downloads from S3 with ETag cache + LRU eviction |
+| `GCSCatalogBackend(bucket)` | Downloads from Google Cloud Storage |
+| `AzureCatalogBackend(container, connection_string)` | Downloads from Azure Blob Storage |
 
 ### Cluster
 
@@ -324,34 +406,43 @@ The format is self-describing — readable without external documentation:
 | `client.freeze(input, output)` | Submit a freeze job to the cluster |
 | `client.wait(job_id)` | Wait for job completion |
 
-### Available codecs
+### Codecs and profiles
 
-| Constant | Description |
-|----------|-------------|
+| Constant / value | Description |
+|------------------|-------------|
 | `pf.CODEC_ZSTD` | Zstandard — fast, good ratio |
 | `pf.CODEC_LZMA2` | LZMA2 — higher ratio, slower |
 | `pf.CODEC_ZPAQ` | ZPAQ — maximum ratio, very slow |
+| `codec_profile="balanced"` | ZSTD for all columns — default |
+| `codec_profile="max_compression"` | LZMA2 for all columns |
+| `codec_profile="max_speed"` | ZSTD L1 for all columns |
+| `codec_profile="auto"` | Selects codec per column based on data profile |
+| `per_column_codec={"col": "lzma2"}` | Override codec on a per-column basis |
 
 ---
 
 ## Tests
 
-The test suite covers 268+ scenarios including edge cases, minimum benchmarks, full fidelity and fault tolerance:
+The test suite covers 1261+ scenarios including edge cases, minimum benchmarks, full fidelity and fault tolerance:
 
 ```
 test_freeze_thaw.py              freeze/thaw/audit/integrity/sparse index
 test_sparse_index.py             chunked freeze, selective thaw, bit-rot detection
 test_catalog.py                  register, search, thaw, cost, integrity, SQL
+test_catalog_backends.py         LocalBackend, versioning, per-dataset version selection
+test_catalog_backends_cloud.py   S3/GCS/Azure with mocked clients, ETag cache, LRU
 test_cluster.py                  health, lifecycle, concurrency, cancellation
+test_cluster_fault_tolerance.py  retry, no workers, 10 parallel jobs
 test_comprehensive.py            edge cases, all codecs, minimum benchmarks
 test_fidelidade_total.py         100% row-by-row, distributions, multi round-trip
 test_concorrencia.py             10 simultaneous threads, parallel freeze+thaw
 test_predictor_edge_cases.py     zero variance, 256 categories, extreme timestamps
-test_cluster_fault_tolerance.py  retry, no workers, 10 parallel jobs
 test_formato_binario_spec.py     byte-by-byte format, SHA-256, sparse index
 test_schema_detector_stress.py   50% missing fields, mixed types, 100 fields
 test_cli_cobertura.py            all CLI commands
 test_performance_regression.py   ratio ≥8×, thaw <2s, audit <50ms
+test_per_column_codec.py         per_column_codec, codec_profile, mixed codecs
+test_query.py                    register/query/unregister, SQL joins, remote aliases
 ```
 
 Current test status: [![Tests](https://img.shields.io/github/actions/workflow/status/caua-ferreira/permafrost-framework/tests.yml?label=tests&logo=github&cacheSeconds=1)](https://github.com/caua-ferreira/permafrost-framework/actions/workflows/tests.yml)
