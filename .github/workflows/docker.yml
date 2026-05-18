@@ -1,10 +1,10 @@
 name: Build & Push Docker Images
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:      # permite trigger manual
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+  workflow_dispatch:
 
 env:
   REGISTRY: docker.io
@@ -14,12 +14,33 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     permissions:
       contents: read
 
     steps:
+      - name: Determine tag and ref
+        id: ctx
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+          echo "REF=refs/tags/${TAG}" >> $GITHUB_OUTPUT
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ctx.outputs.REF }}
+
+      # Necessário para docker/metadata-action interpretar semver corretamente
+      - name: Override GITHUB_REF
+        run: echo "GITHUB_REF=refs/tags/${{ steps.ctx.outputs.TAG }}" >> $GITHUB_ENV
 
       - name: Docker meta — master
         id: meta-master
@@ -80,8 +101,8 @@ jobs:
       - name: Resumo
         run: |
           echo "## Docker Images Publicadas" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_MASTER }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_WORKER }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_MASTER }}:${{ steps.ctx.outputs.TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_WORKER }}:${{ steps.ctx.outputs.TAG }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker-compose up --scale worker=4" >> $GITHUB_STEP_SUMMARY

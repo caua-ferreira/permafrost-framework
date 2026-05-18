@@ -1,23 +1,42 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
+      - name: Determine ref
+        id: ctx
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TAG="${{ github.event.workflow_run.head_branch }}"
+            echo "REF=refs/tags/${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "REF=${GITHUB_REF}" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ctx.outputs.REF }}
+
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+
       - name: Build
         run: |
           pip install build
           python -m build
+
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}ts.PYPI_API_TOKEN }}
+          password: ${{ secrets.PYPI_API_TOKEN }}
