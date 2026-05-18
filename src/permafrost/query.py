@@ -58,6 +58,53 @@ from permafrost.chunk_mode import peek
 _registry_lock = threading.Lock()
 _registry: dict[str, str] = {}   # alias -> absolute path
 
+# ---------------------------------------------------------------------------
+# Global backend for remote path resolution
+# ---------------------------------------------------------------------------
+_backend_lock = threading.Lock()
+_global_backend = None   # CatalogBackend instance or None
+
+_REMOTE_PREFIXES = ('s3://', 'gs://', 'az://')
+
+
+def set_query_backend(backend) -> None:
+    """Set the global backend used to resolve remote paths in queries.
+
+    Args:
+        backend: A ``CatalogBackend`` instance (e.g. ``S3CatalogBackend``).
+            Pass ``None`` to revert to local-only mode.
+
+    Example::
+
+        pf.set_query_backend(S3CatalogBackend(bucket="my-bucket"))
+        pf.register('sales', 's3://my-bucket/sales.permafrost')
+        df = pf.query("SELECT * FROM sales")
+    """
+    global _global_backend
+    with _backend_lock:
+        _global_backend = backend
+
+
+def _get_backend():
+    with _backend_lock:
+        return _global_backend
+
+
+def _is_remote(path: str) -> bool:
+    return any(path.startswith(p) for p in _REMOTE_PREFIXES)
+
+
+def _resolve_path(path: str) -> str:
+    backend = _get_backend()
+    if backend is not None:
+        return backend.resolve_path(path)
+    if _is_remote(path):
+        raise ValueError(
+            f"Remote path {path!r} requires a backend. "
+            "Call pf.set_query_backend(...) first."
+        )
+    return os.path.abspath(path)
+
 
 def register(alias_or_path: str, path: Optional[str] = None) -> None:
     """Register a .permafrost/.pf file under a SQL alias.
@@ -84,17 +131,18 @@ def register(alias_or_path: str, path: Optional[str] = None) -> None:
         alias = alias_or_path
         file_path = path
 
-    abs_path = os.path.abspath(file_path)
-    ext = os.path.splitext(abs_path)[1].lower()
+    # Keep remote URIs as-is; make local paths absolute
+    stored_path = file_path if _is_remote(file_path) else os.path.abspath(file_path)
+    ext = os.path.splitext(stored_path)[1].lower()
     if ext not in PERMAFROST_EXTENSIONS:
         raise ValueError(
             f"Expected a .permafrost or .pf file, got: {file_path!r}"
         )
-    if not os.path.exists(abs_path):
-        raise FileNotFoundError(f"File not found: {abs_path}")
+    if not _is_remote(stored_path) and not os.path.exists(stored_path):
+        raise FileNotFoundError(f"File not found: {stored_path}")
 
     with _registry_lock:
-        _registry[alias] = abs_path
+        _registry[alias] = stored_path
 
 
 def unregister(alias: str) -> None:
@@ -321,9 +369,12 @@ def query(
 
     # ── Load files referenced directly in SQL ────────────────────────────────
     for file_path in file_refs:
-        abs_path = os.path.abspath(file_path)
-        if not os.path.exists(abs_path):
-            raise FileNotFoundError(f"Permafrost file not found: {file_path!r}")
+        if _is_remote(file_path):
+            abs_path = file_path  # backend resolves it inside _load_file
+        else:
+            abs_path = os.path.abspath(file_path)
+            if not os.path.exists(abs_path):
+                raise FileNotFoundError(f"Permafrost file not found: {file_path!r}")
 
         alias = _sql_alias_for_path(sql, file_path)
         # Use the alias as view name; fall back to stem
@@ -363,7 +414,7 @@ def query(
         # Only load if the alias actually appears in the (remaining) SQL
         if not re.search(rf'\b{re.escape(alias)}\b', working_sql, re.IGNORECASE):
             continue
-        if not os.path.exists(abs_path):
+        if not _is_remote(abs_path) and not os.path.exists(abs_path):
             raise FileNotFoundError(
                 f"Registered file for alias {alias!r} not found: {abs_path}"
             )
@@ -402,9 +453,9 @@ def _load_file(
     verify: bool = True,
 ) -> pd.DataFrame:
     """Load a .permafrost/.pf file into a DataFrame, applying filter pushdown."""
-    chunks = list(peek(path, filter=filter_dict or None, verify=verify, key=key))
+    local = _resolve_path(path)
+    chunks = list(peek(local, filter=filter_dict or None, verify=verify, key=key))
     if not chunks:
-        # Return empty DataFrame with correct columns
-        info = audit(path)
+        info = audit(local)
         return pd.DataFrame(columns=info['columns'])
     return pd.concat(chunks, ignore_index=True)

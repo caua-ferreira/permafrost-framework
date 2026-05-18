@@ -17,9 +17,8 @@ import duckdb
 import pandas as pd
 import numpy as np
 
-# Importar o codec
-
 from permafrost.codec import audit as pf_audit, unfreeze as pf_thaw
+from permafrost.catalog_backends import CatalogBackend, LocalCatalogBackend
 
 # ── STORAGE PRICING ($/GB/mês) ────────────────────────────────────────────────
 STORAGE_PRICES = {
@@ -34,6 +33,7 @@ CREATE TABLE IF NOT EXISTS datasets (
     id              INTEGER PRIMARY KEY,
     name            VARCHAR NOT NULL,
     path            VARCHAR NOT NULL UNIQUE,
+    version         VARCHAR,
     registered_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     freeze_date     TIMESTAMP,
     codec           VARCHAR,
@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS datasets (
     file_size_bytes BIGINT,
     file_size_mb    DOUBLE,
     partition_col   VARCHAR,
-    partition_keys  VARCHAR,     -- JSON array
-    columns         VARCHAR,     -- JSON array
+    partition_keys  VARCHAR,
+    columns         VARCHAR,
     comment         VARCHAR,
-    tags            VARCHAR,     -- JSON array
-    schema_hash     VARCHAR,     -- SHA-256 dos nomes das colunas
+    tags            VARCHAR,
+    schema_hash     VARCHAR,
     last_verified   TIMESTAMP,
     verified_ok     BOOLEAN
 );
@@ -91,7 +91,7 @@ class PermafrostCatalog:
         >>> cat.integrity_check()
     """
 
-    def __init__(self, catalog_path: str = ".permafrost_catalog.db"):
+    def __init__(self, catalog_path: str = ".permafrost_catalog.db", backend=None):
         """Abre (ou cria) o catálogo DuckDB no caminho especificado.
 
         O catálogo indexa arquivos ``.permafrost`` lendo apenas o header e o
@@ -101,15 +101,23 @@ class PermafrostCatalog:
         Args:
             catalog_path: Caminho do arquivo DuckDB. Use ``":memory:"`` para
                 testes (dados não persistidos). Padrão: ``".permafrost_catalog.db"``.
+            backend: Backend de storage opcional (``S3CatalogBackend``,
+                ``GCSCatalogBackend``, etc.). Padrão: ``LocalCatalogBackend``.
 
         Example:
             >>> cat = PermafrostCatalog(".permafrost_catalog.db")
-            >>> cat = PermafrostCatalog(":memory:")  # testes
+            >>> cat = PermafrostCatalog(":memory:", backend=S3CatalogBackend(...))
         """
         self.catalog_path = catalog_path
         self._lock = threading.RLock()
+        self._backend: CatalogBackend = backend if backend is not None else LocalCatalogBackend()
         self.con = duckdb.connect(catalog_path)
         self.con.execute(CATALOG_SCHEMA)
+        # Migration: add version column for catalogs created before this version
+        try:
+            self.con.execute("ALTER TABLE datasets ADD COLUMN version VARCHAR")
+        except Exception:
+            pass
         self._print_header()
 
     def _print_header(self):
@@ -118,17 +126,39 @@ class PermafrostCatalog:
         print(f"PermafrostCatalog  →  {self.catalog_path}")
         print(f"  {n} dataset(s) registrado(s)\n")
 
+    # ── CONFIGURE ─────────────────────────────────────────────────────────────
+    def configure(self, backend: CatalogBackend) -> None:
+        """Troca o backend de storage em runtime.
+
+        Args:
+            backend: Novo backend (``S3CatalogBackend``, ``GCSCatalogBackend``, etc.).
+        """
+        with self._lock:
+            self._backend = backend
+
     # ── REGISTER ──────────────────────────────────────────────────────────────
-    def register(self, path: str, tags: list = None, name: str = None) -> dict:
+    def register(self, path: str, tags: list = None, name: str = None,
+                 version: str = None) -> dict:
+        """Registra um arquivo .permafrost lendo apenas header + sparse index.
+
+        Suporta URIs remotas (``s3://``, ``gs://``, ``az://``) quando o catálogo
+        foi configurado com o backend apropriado. O path original (incluindo URI
+        remota) é armazenado no catálogo; a resolução/download é transparente.
+
+        Args:
+            path: Caminho local ou URI remota do arquivo ``.permafrost``.
+            tags: Lista de strings para categorização.
+            name: Nome do dataset (padrão: stem do arquivo).
+            version: Tag de versão opcional (ex: ``"v1.0"``).
         """
-        Registra um arquivo .permafrost lendo apenas header + sparse index.
-        Não descomprime nenhum chunk.
-        """
-        if not os.path.exists(path):
+        # Resolve via backend — for remote URIs this downloads to cache
+        local_path = self._backend.resolve_path(path)
+
+        if not os.path.exists(local_path):
             raise FileNotFoundError(f"Arquivo não encontrado: {path}")
 
         # Ler metadados via audit() — zero decompressão (fora do lock)
-        info = pf_audit(path)
+        info = pf_audit(local_path)
 
         with self._lock:
             # Verificar se já está registrado
@@ -152,12 +182,12 @@ class PermafrostCatalog:
             ds_id = self.con.execute("SELECT nextval('dataset_seq')").fetchone()[0]
             self.con.execute("""
                 INSERT INTO datasets
-                (id, name, path, freeze_date, codec, quant_level, orig_rows,
+                (id, name, path, version, freeze_date, codec, quant_level, orig_rows,
                  n_chunks, chunk_rows, file_size_bytes, file_size_mb,
                  partition_col, partition_keys, columns, comment, tags, schema_hash)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, [
-                ds_id, ds_name, path, freeze_ts,
+                ds_id, ds_name, path, version, freeze_ts,
                 info['codec'], info['quant'],
                 info['orig_rows'], info['n_chunks'], info['chunk_rows'],
                 int(info['file_size_mb'] * 1e6), info['file_size_mb'],
@@ -182,9 +212,28 @@ class PermafrostCatalog:
 
         return {
             'status': 'registered', 'id': ds_id, 'name': ds_name,
-            'path': path, 'rows': info['orig_rows'],
+            'path': path, 'version': version, 'rows': info['orig_rows'],
             'file_mb': info['file_size_mb'], 'n_chunks': info['n_chunks'],
         }
+
+    def versions(self, name: str) -> pd.DataFrame:
+        """Lista todas as versões registradas de um dataset.
+
+        Args:
+            name: Nome (ou parte do nome) do dataset.
+
+        Returns:
+            DataFrame com colunas ``id``, ``name``, ``version``, ``path``,
+            ``freeze_date``, ``orig_rows``, ``file_size_mb``, ``registered_at``.
+        """
+        with self._lock:
+            return self.con.execute("""
+                SELECT id, name, version, path, freeze_date,
+                       orig_rows, file_size_mb, registered_at
+                FROM datasets
+                WHERE name LIKE ?
+                ORDER BY registered_at DESC
+            """, [f"%{name}%"]).df()
 
     def register_dir(self, directory: str, tags: list = None, recursive: bool = False) -> list:
         """Registra todos os .permafrost de um diretório."""
@@ -284,27 +333,38 @@ class PermafrostCatalog:
 
     # ── UNFREEZE via CATALOG ──────────────────────────────────────────────────
     def unfreeze(self, name: str, filter: dict = None, row_range: tuple = None,
-                 verify: bool = True) -> pd.DataFrame:
-        """
-        Encontra o dataset pelo nome e executa leitura seletiva via sparse index.
+                 verify: bool = True, version: str = None) -> pd.DataFrame:
+        """Encontra o dataset pelo nome e executa leitura seletiva via sparse index.
+
+        Suporta backends remotos: o path é resolvido pelo backend configurado
+        (download transparente para cache local quando necessário).
+
+        Args:
+            name: Nome (ou parte do nome) do dataset.
+            filter: Filtro de partição (ex: ``{"ano": 2023}``).
+            row_range: Tupla ``(start, end)`` para leitura parcial.
+            verify: Valida SHA-256 de cada chunk (padrão True).
+            version: Versão específica a ler. Padrão: mais recente.
         """
         with self._lock:
-            result = self.con.execute(
-                "SELECT path, partition_col FROM datasets WHERE name LIKE ? LIMIT 1",
-                [f"%{name}%"]
-            ).fetchone()
+            if version is not None:
+                result = self.con.execute(
+                    "SELECT path, partition_col FROM datasets WHERE name LIKE ? AND version = ? LIMIT 1",
+                    [f"%{name}%", version]
+                ).fetchone()
+            else:
+                result = self.con.execute(
+                    "SELECT path, partition_col FROM datasets WHERE name LIKE ? ORDER BY registered_at DESC LIMIT 1",
+                    [f"%{name}%"]
+                ).fetchone()
         if not result:
             raise KeyError(f"Dataset '{name}' não encontrado no catalog. Use search() para listar.")
-        path, part_col = result
+        path, _ = result
 
-        # Adaptar filtro para a coluna de partição correta
-        if filter and part_col and part_col != '__rows__':
-            # Garantir que o filtro usa a coluna correta
-            pass
-
+        local_path = self._backend.resolve_path(path)
         print(f"  unfreeze: {os.path.basename(path)}", end="")
         t0 = time.time()
-        df = pf_thaw(path, verify=verify, filter=filter, row_range=row_range)
+        df = pf_thaw(local_path, verify=verify, filter=filter, row_range=row_range)
         tt = time.time() - t0
         print(f" → {len(df):,} linhas em {tt:.3f}s")
         return df
@@ -367,12 +427,19 @@ class PermafrostCatalog:
         results = []
 
         for ds_id, ds_name, path in datasets_rows:
-            if not os.path.exists(path):
+            try:
+                local_path = self._backend.resolve_path(path)
+            except Exception:
+                results.append({'name': ds_name, 'path': path, 'status': 'RESOLVE_ERROR',
+                                'chunks_ok': 0, 'chunks_fail': 0})
+                continue
+
+            if not os.path.exists(local_path):
                 results.append({'name': ds_name, 'path': path, 'status': 'FILE_MISSING',
                                 'chunks_ok': 0, 'chunks_fail': 0})
                 continue
 
-            with open(path, 'rb') as f:
+            with open(local_path, 'rb') as f:
                 raw = f.read()
 
             with self._lock:

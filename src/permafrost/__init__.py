@@ -116,6 +116,13 @@ from permafrost.context import PermafrostContext
 
 # ── Catalog (DuckDB index) ────────────────────────────────────────────────────
 from permafrost.catalog import PermafrostCatalog
+from permafrost.catalog_backends import (
+    CatalogBackend,
+    LocalCatalogBackend,
+    S3CatalogBackend,
+    GCSCatalogBackend,
+    AzureCatalogBackend,
+)
 
 # ── Cloud storage adapters ────────────────────────────────────────────────────
 from permafrost.storage import (
@@ -140,6 +147,7 @@ from permafrost.query import (
     register,
     unregister,
     registered,
+    set_query_backend,
     PERMAFROST_EXTENSIONS,
 )
 
@@ -173,6 +181,8 @@ __all__ = [
     "PermafrostContext",
     # Catalog
     "PermafrostCatalog",
+    "CatalogBackend", "LocalCatalogBackend",
+    "S3CatalogBackend", "GCSCatalogBackend", "AzureCatalogBackend",
     # Storage
     "LocalAdapter", "S3Adapter", "GCSAdapter", "AzureAdapter",
     "storage_from_uri", "parse_uri", "freeze_to", "thaw_from", "audit_remote",
@@ -190,6 +200,7 @@ __all__ = [
     # Query engine
     "diff",
     "query", "register", "unregister", "registered",
+    "set_query_backend",
     "PERMAFROST_EXTENSIONS",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
