@@ -1143,4 +1143,6 @@ def audit(path) -> dict:
         'schema_version': h['manifests'].get('__schema__', {}).get('version') if '__schema__' in h['manifests'] else None,
         'schema':         h['manifests'].get('__schema__', {}).get('fields') if '__schema__' in h['manifests'] else None,
         'stored_schema':  {k: v.get('dtype', 'object') for k, v in h['manifests'].items() if not k.startswith('__')},
+        'lossy_columns':  {k: {'predictor': v.get('predictor'), 'precision_bits': v.get('precision_bits', 32), 'max_abs_error': v.get('max_abs_error', 0.0)} for k, v in h['manifests'].items() if not k.startswith('__') and v.get('predictor') in (PRED_FLOAT32, PRED_FLOAT16)},
+        'edek_size':      len(h['enc_dek']),
     }
