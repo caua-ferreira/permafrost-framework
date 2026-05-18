@@ -222,6 +222,102 @@ class TestCatalogWithBackend(unittest.TestCase):
         self.assertEqual(result.iloc[0]["status"], "FILE_MISSING")
 
 
+# ── Catalog coverage gaps ────────────────────────────────────────────────────
+
+class TestCatalogCoverageGaps(unittest.TestCase):
+    """Targeted tests to cover previously-uncovered catalog.py branches."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.cat = PermafrostCatalog(":memory:")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_register_dir_already_registered_prints(self):
+        """register_dir with already-registered file → prints '~ já registrado'."""
+        _freeze_tmp(self.tmp, "dup.permafrost")
+        self.cat.register_dir(self.tmp)
+        # Second pass — all files already registered
+        results = self.cat.register_dir(self.tmp)
+        statuses = [r["status"] for r in results]
+        self.assertIn("already_registered", statuses)
+
+    def test_register_dir_error_path(self):
+        """register_dir catches exceptions from register() and appends error."""
+        # Create a broken file that looks like .permafrost but fails audit
+        bad = os.path.join(self.tmp, "bad.permafrost")
+        with open(bad, "wb") as f:
+            f.write(b"not a real permafrost file")
+        results = self.cat.register_dir(self.tmp)
+        statuses = [r["status"] for r in results]
+        self.assertIn("error", statuses)
+
+    def test_search_partition_col_filter(self):
+        path = _freeze_tmp(self.tmp)
+        self.cat.register(path, name="ptest")
+        df = self.cat.search(partition_col="nonexistent_col")
+        self.assertIsInstance(df, pd.DataFrame)
+
+    def test_search_max_mb_filter(self):
+        path = _freeze_tmp(self.tmp)
+        self.cat.register(path, name="mbtest")
+        df_all = self.cat.search()
+        max_mb = df_all.iloc[0]["mb"] + 1
+        df = self.cat.search(max_mb=max_mb)
+        self.assertEqual(len(df), 1)
+
+    def test_search_tags_contain_filter(self):
+        path = _freeze_tmp(self.tmp)
+        self.cat.register(path, name="tagtest", tags=["production", "archive"])
+        df = self.cat.search(tags_contain="production")
+        self.assertEqual(len(df), 1)
+        df_none = self.cat.search(tags_contain="nonexistent_tag")
+        self.assertEqual(len(df_none), 0)
+
+    def test_search_chunks_with_part_key_filter(self):
+        path = _freeze_tmp(self.tmp, "chunks_test.permafrost", n=200)
+        self.cat.register(path, name="chunks_test")
+        df = self.cat.search_chunks("chunks_test", part_key="some_key")
+        self.assertIsInstance(df, pd.DataFrame)
+
+    def test_thaw_deprecated_method(self):
+        """catalog.thaw() should emit DeprecationWarning and delegate to unfreeze()."""
+        import warnings
+        path = _freeze_tmp(self.tmp, "thaw_test.permafrost")
+        self.cat.register(path, name="thaw_test")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            df = self.cat.thaw("thaw_test")
+        self.assertTrue(any(issubclass(warning.category, DeprecationWarning) for warning in w))
+        self.assertIsInstance(df, pd.DataFrame)
+
+    def test_integrity_check_resolve_error(self):
+        """integrity_check should handle backend resolution errors gracefully."""
+        from permafrost.catalog_backends import CatalogBackend
+
+        class FailingBackend(CatalogBackend):
+            def resolve_path(self, path):
+                raise RuntimeError("simulated resolve failure")
+            def upload(self, local, remote):
+                pass
+
+        path = _freeze_tmp(self.tmp)
+        self.cat.register(path, name="fail_test")
+        self.cat.configure(FailingBackend())
+        result = self.cat.integrity_check("fail_test")
+        self.assertEqual(result.iloc[0]["status"], "RESOLVE_ERROR")
+
+    def test_repr_shows_dataset_count(self):
+        r = repr(self.cat)
+        self.assertIn("PermafrostCatalog", r)
+        self.assertIn("datasets=0", r)
+        path = _freeze_tmp(self.tmp)
+        self.cat.register(path)
+        r2 = repr(self.cat)
+        self.assertIn("datasets=1", r2)
+
+
 # ── query.py: set_query_backend ───────────────────────────────────────────────
 
 class TestSetQueryBackend(unittest.TestCase):
