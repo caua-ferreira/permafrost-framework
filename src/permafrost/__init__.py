@@ -28,7 +28,7 @@ Links:
     Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
-__version__  = "1.1.0"
+__version__  = "1.2.1"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 
@@ -61,6 +61,7 @@ from permafrost.codec import (
     MAGIC,
     EOF_MAGIC,
 )
+append = freeze_append   # clean public alias
 
 # ── Schema detection (SQL + NoSQL + JSONL) ────────────────────────────────────
 from permafrost.schema_detector import (
@@ -124,6 +125,18 @@ from permafrost.storage import (
     ResumableUploadError,
 )
 
+# ── Diff engine ─────────────────────────────
+from permafrost.diff import diff
+
+# ── Query engine (SQL over .permafrost/.pf) ──────────────────────────────────
+from permafrost.query import (
+    query,
+    register,
+    unregister,
+    registered,
+    PERMAFROST_EXTENSIONS,
+)
+
 # ── Cluster (distributed processing) ─────────────────────────────────────────
 from permafrost.cluster import (
     PermafrostMaster,
@@ -133,7 +146,7 @@ from permafrost.cluster import (
 
 __all__ = [
     # Core
-    "freeze", "unfreeze", "audit",
+    "freeze", "freeze_append", "append", "unfreeze", "audit",
     "thaw",          # deprecated alias
     # Codecs
     "CODEC_ZSTD", "CODEC_LZMA2", "CODEC_ZPAQ",
@@ -165,6 +178,10 @@ __all__ = [
     "AuthError", "RBACManager", "ClusterUser", "generate_token", "validate_token",
     # Auto codec
     "CODEC_AUTO", "DataProfile", "auto_select", "profile_dataframe",
+    # Query engine
+    "diff",
+    "query", "register", "unregister", "registered",
+    "PERMAFROST_EXTENSIONS",
 ]
 # ── Spark DataSource API v2 ───────────────────────────────────────────────────
 try:

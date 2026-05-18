@@ -10,6 +10,7 @@ import numpy as np, pandas as pd
 import zstandard as zstd
 
 MAGIC = b'PRMS'; EOF_MAGIC = b'SMRP'; VERSION = bytes([1, 3])
+PERMAFROST_EXTENSIONS = ('.permafrost', '.pf')
 CODEC_ZSTD=0x01; CODEC_LZMA2=0x02; CODEC_ZPAQ=0x03
 QUANT_NONE=0x00; QUANT_HIGH=0x01; QUANT_MEDIUM=0x02; QUANT_LOW=0x03
 FLAG_DELTA=0x01; FLAG_QUANTIZE=0x02; FLAG_CHUNKED=0x04
@@ -368,6 +369,7 @@ def _parse_chunk(data,manifests,n_rows):
         col_data[cn]=data[p:p+sl]; p+=sl
     series={}
     for col,m in manifests.items():
+        if col.startswith('__'): continue
         if col in col_data:
             series[col]=decode_column(col_data[col],m,n_rows)
     return pd.DataFrame(series)
@@ -397,17 +399,171 @@ def _chunk_overlaps_range(part_key: str, lo: str, hi: str) -> bool:
         return True  # include on error — no data loss
 
 
+def _normalize_partition_by(partition_by, columns) -> list:
+    """Normalizes ``partition_by`` to a list of column names.
+
+    Accepts:
+    - ``None``          → empty list (no partitioning)
+    - ``"col"``         → ``["col"]``
+    - ``"*"``           → all column names from *columns*
+    - ``["a", "b"]``    → ``["a", "b"]``
+
+    Only columns that actually exist in *columns* are kept.
+    """
+    if partition_by is None:
+        return []
+    if partition_by == '*':
+        return list(columns)
+    if isinstance(partition_by, str):
+        return [partition_by] if partition_by in columns else []
+    # list/tuple of column names
+    return [c for c in partition_by if c in columns]
+
+
+def _make_partition_keys(df_chunk, cols: list) -> dict:
+    """Returns ``{col: key_str}`` for each column in *cols* present in *df_chunk*.
+
+    key_str is:
+    - a single stringified value when the chunk contains only one distinct value
+    - ``"min-max"`` when the chunk spans multiple values
+    """
+    result: dict = {}
+    for col in cols:
+        if col not in df_chunk.columns:
+            continue
+        pv = sorted(df_chunk[col].unique().tolist())
+        result[col] = str(pv[0]) if len(pv) == 1 else f"{pv[0]}-{pv[-1]}"
+    return result
+
+
+def _get_part_key_for_col(entry: dict, col: str):
+    """Returns the partition key string for *col* in a sparse-index entry, or None.
+
+    Checks ``partition_keys`` dict first (new multi-col format), then falls back
+    to the legacy ``part_col``/``part_key`` fields for backward compatibility.
+    """
+    pk = entry.get('partition_keys')
+    if pk and col in pk:
+        return pk[col]
+    if entry.get('part_col') == col:
+        return entry.get('part_key', '')
+    return None  # column not indexed for this entry
+
+
+def _chunk_matches_value(part_key: str, val_str: str) -> bool:
+    """Returns True if the chunk's partition range contains exactly val_str.
+
+    Fixes the old ``val_str in part_key`` substring bug (e.g. "2" matching "2022").
+    For single-value keys: exact string equality.
+    For range keys ("min-max"): checks that val_str falls within [min, max].
+    """
+    try:
+        dash = part_key.find('-', 1)  # skip leading '-' for negative numbers
+        if dash == -1:
+            return part_key == val_str
+        chunk_min, chunk_max = part_key[:dash], part_key[dash + 1:]
+        return chunk_max >= val_str >= chunk_min
+    except Exception:
+        return True  # include on error — no data loss
+
+
+def _partition_filter(index_entries: list, filter_dict: dict) -> list:
+    """Filter sparse-index entries by a multi-column filter dict.
+
+    Supports:
+    - Exact value:      ``{"ano": 2022}``
+    - List of values:   ``{"ano": [2021, 2022]}``   (OR within key)
+    - Range (2-tuple):  ``{"ano": (2020, 2022)}``
+    - Multi-column AND: ``{"ano": 2022, "regiao": "Norte"}``
+
+    Works with both old files (``part_col``/``part_key`` only) and new files
+    that carry a ``partition_keys`` dict for multi-column partitioning.
+
+    Columns not present in any entry's partition metadata are skipped here and
+    handled by :func:`_column_filter` after decompression.
+
+    Returns the filtered list, or the original list when nothing would be
+    selected (safety fallback — prevents data loss).
+    """
+    selected = index_entries
+    for col_f, val_f in filter_dict.items():
+        # Skip columns that are not indexed in the sparse index
+        if not any(_get_part_key_for_col(e, col_f) is not None for e in selected):
+            continue
+
+        if isinstance(val_f, list):
+            str_vals = [str(v) for v in val_f]
+            new_sel = [
+                e for e in selected
+                if _get_part_key_for_col(e, col_f) is None
+                or any(_chunk_matches_value(_get_part_key_for_col(e, col_f), s)
+                       for s in str_vals)
+            ]
+        elif isinstance(val_f, tuple) and len(val_f) == 2:
+            lo, hi = str(val_f[0]), str(val_f[1])
+            new_sel = [
+                e for e in selected
+                if _get_part_key_for_col(e, col_f) is None
+                or _chunk_overlaps_range(_get_part_key_for_col(e, col_f), lo, hi)
+            ]
+        else:
+            val_str = str(val_f)
+            new_sel = [
+                e for e in selected
+                if _get_part_key_for_col(e, col_f) is None
+                or _chunk_matches_value(_get_part_key_for_col(e, col_f), val_str)
+            ]
+
+        if new_sel:
+            selected = new_sel
+    return selected
+
+
+def _column_filter(df: 'pd.DataFrame', filter_dict: dict) -> 'pd.DataFrame':
+    """Apply a multi-column filter to a DataFrame after decompression.
+
+    Handles the same filter shapes as :func:`_partition_filter`:
+    exact value, list (OR), 2-tuple range.  Columns absent from the DataFrame
+    are silently ignored.
+
+    Returns a reset-index DataFrame (may be empty).
+    """
+    if df.empty or not filter_dict:
+        return df
+    mask = pd.Series(True, index=df.index)
+    for col_f, val_f in filter_dict.items():
+        if col_f not in df.columns:
+            continue
+        col = df[col_f]
+        if isinstance(val_f, list):
+            try:
+                mask &= col.isin(val_f)
+            except TypeError:
+                mask &= col.astype(str).isin([str(v) for v in val_f])
+        elif isinstance(val_f, tuple) and len(val_f) == 2:
+            lo, hi = val_f
+            mask &= (col >= lo) & (col <= hi)
+        else:
+            # Exact match: try native type, fall back to string comparison
+            try:
+                mask &= col == val_f
+            except TypeError:
+                mask &= col.astype(str) == str(val_f)
+    return df[mask].reset_index(drop=True)
+
+
 def freeze(
     df: pd.DataFrame,
     path: str | os.PathLike,
     codec: int = CODEC_LZMA2,
     quant: int = QUANT_NONE,
     chunk_rows: int = DEFAULT_CHUNK_ROWS,
-    partition_by: Optional[str] = None,
+    partition_by=None,
     comment: str = "",
     retention_days: int = 0,
     key=None,
     predictors: Optional[dict] = None,
+    primary_key=None,
 ) -> dict[str, Any]:
     """Comprime um DataFrame para o formato .permafrost.
 
@@ -501,7 +657,15 @@ def freeze(
             elif col in manifests:
                 manifests[col]['predictor'] = pred_name
 
+    # ── Primary key metadata ─────────────────────────────────────────────────
+    if primary_key is not None:
+        pk_list = [primary_key] if isinstance(primary_key, str) else list(primary_key)
+        manifests['__pk__'] = pk_list
+
     # ── Comprimir chunks ─────────────────────────────────────────────────────
+    part_cols = _normalize_partition_by(partition_by, df.columns)
+    primary_col = part_cols[0] if part_cols else None
+
     chunk_blobs=[]; index_entries=[]
     for chunk_start in range(0,orig_rows,chunk_rows):
         chunk_end=min(chunk_start+chunk_rows,orig_rows)
@@ -512,15 +676,19 @@ def freeze(
             compressed = encrypt_chunk(compressed, raw_key)
         sha=_sha256(compressed)
 
-        if partition_by and partition_by in df_chunk.columns:
-            pv=sorted(df_chunk[partition_by].unique().tolist())
-            part_key=str(pv[0]) if len(pv)==1 else f"{pv[0]}-{pv[-1]}"
-        else: part_key=f"rows_{chunk_start}_{chunk_end-1}"
+        partition_keys = _make_partition_keys(df_chunk, part_cols)
+        if primary_col and primary_col in partition_keys:
+            part_key = partition_keys[primary_col]
+        else:
+            part_key = f"rows_{chunk_start}_{chunk_end-1}"
 
-        index_entries.append({'chunk_id':len(chunk_blobs),'row_start':chunk_start,
+        entry = {'chunk_id':len(chunk_blobs),'row_start':chunk_start,
             'row_end':chunk_end-1,'part_key':part_key,
-            'part_col':partition_by or '__rows__',
-            'byte_offset':None,'byte_len':len(compressed),'sha256':sha.hex()})
+            'part_col':primary_col or '__rows__',
+            'byte_offset':None,'byte_len':len(compressed),'sha256':sha.hex()}
+        if partition_keys:
+            entry['partition_keys'] = partition_keys
+        index_entries.append(entry)
         chunk_blobs.append((compressed,sha))
 
     # ── Header ───────────────────────────────────────────────────────────────
@@ -560,6 +728,7 @@ def freeze(
         f.write(index_sha); f.write(EOF_MAGIC)
 
     elapsed=time.time()-t0; stored=os.path.getsize(path)
+    pk_list = manifests.get('__pk__', None)
     result = {'path':path,'rows':orig_rows,'cols':len(df.columns),
             'n_chunks':len(chunk_blobs),'chunk_rows':chunk_rows,
             'original_mb':round(orig_bytes/1e6,3),'stored_mb':round(stored/1e6,3),
@@ -567,7 +736,10 @@ def freeze(
             'reduction_pct':round((1-stored/orig_bytes)*100,2),
             'freeze_s':round(elapsed,3),
             'codec':{CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(codec,'?'),
-            'partition_by':partition_by,'index_entries':len(index_entries)}
+            'partition_by': part_cols[0] if len(part_cols)==1 else (part_cols or None),
+            'partition_cols': part_cols,
+            'primary_key': pk_list,
+            'index_entries':len(index_entries)}
     if _auto_reason is not None:
         result['auto_reason'] = _auto_reason
     return result
@@ -592,12 +764,13 @@ def _read_header(raw):
         kil=struct.unpack('>B',rd(1))[0]; key_id=rd(kil).decode()
         edek_len=struct.unpack('>H',rd(2))[0]; enc_dek=rd(edek_len)
     hdr_end=p; hdr_sha=rd(32)
+    primary_key = manifests.get('__pk__', None)
     return {'flags':flags,'codec':codec,'quant':quant,'n_chunks':n_chunks,
             'chunk_rows':chunk_rows,'manifests':manifests,'comment':comment,
             'freeze_ts':freeze_ts,'orig_rows':orig_rows,'stored_rows':stored_rows,
             'hdr_end':hdr_end,'hdr_sha_stored':hdr_sha,'payload_start':p,
             'encrypted':bool(flags & FLAG_ENCRYPTED),'enc_kms':enc_kms,'key_id':key_id,
-            'enc_dek':enc_dek}
+            'enc_dek':enc_dek,'primary_key':primary_key}
 
 def _read_sparse_index(raw):
     if raw[-4:]!=EOF_MAGIC: raise ValueError("EOF magic ausente")
@@ -616,6 +789,9 @@ def unfreeze(
     key=None,
     schema_override=None,
     engine: str = 'pandas',
+    output_format: str = 'dataframe',
+    sep: str = ',',
+    table: Optional[str] = None,
 ) -> 'pd.DataFrame | Any':
     """Descomprime um arquivo .permafrost de volta para DataFrame.
 
@@ -661,17 +837,7 @@ def unfreeze(
 
     index_entries=_read_sparse_index(raw)
 
-    selected=index_entries
-    if filter:
-        col_f,val_f=next(iter(filter.items()))
-        if isinstance(val_f, (list, tuple)) and len(val_f)==2:
-            lo,hi=str(val_f[0]),str(val_f[1])
-            sel=[e for e in index_entries if e['part_col']==col_f
-                 and _chunk_overlaps_range(e['part_key'],lo,hi)]
-        else:
-            val_str=str(val_f)
-            sel=[e for e in index_entries if e['part_col']==col_f and val_str in e['part_key']]
-        if sel: selected=sel
+    selected = _partition_filter(index_entries, filter) if filter else index_entries
     if row_range:
         sr,er=row_range
         selected=[e for e in index_entries if e['row_end']>=sr and e['row_start']<=er]
@@ -692,20 +858,38 @@ def unfreeze(
 
     result=pd.concat(dfs,ignore_index=True) if dfs else pd.DataFrame()
     if filter and len(result):
-        col_f,val_f=next(iter(filter.items()))
-        if col_f in result.columns:
-            if isinstance(val_f,(list,tuple)) and len(val_f)==2:
-                lo,hi=val_f
-                result=result[(result[col_f]>=lo)&(result[col_f]<=hi)].reset_index(drop=True)
-            else:
-                result=result[result[col_f].astype(str)==str(val_f)].reset_index(drop=True)
+        result = _column_filter(result, filter)
     if schema_override is not None:
         from permafrost.schema_evolution import apply_schema_evolution
         result = apply_schema_evolution(result, schema_override)
     if engine == 'polars':
         import polars as pl
         return pl.from_pandas(result)
-    return result
+    # ── Output format ─────────────────────────────────────────────────────────
+    fmt = output_format.lower()
+    if fmt == 'dataframe':
+        return result
+    elif fmt == 'records':
+        return result.to_dict('records')
+    elif fmt == 'json':
+        return result.to_json(orient='records', force_ascii=False, date_format='iso')
+    elif fmt == 'csv':
+        return result.to_csv(index=False, sep=sep)
+    elif fmt == 'parquet':
+        import io as _io
+        buf = _io.BytesIO()
+        result.to_parquet(buf, index=False)
+        return buf.getvalue()
+    elif fmt == 'xlsx':
+        import io as _io
+        buf = _io.BytesIO()
+        result.to_excel(buf, index=False, engine='openpyxl')
+        return buf.getvalue()
+    else:
+        raise ValueError(
+            f"output_format invalido: {output_format!r}. "
+            "Opcoes: 'dataframe', 'records', 'json', 'csv', 'parquet', 'xlsx'."
+        )
 
 # ── DEPRECATED ALIAS ──────────────────────────────────────────────────────────
 def thaw(*args, **kwargs):
@@ -774,7 +958,15 @@ def freeze_append(
     quant      = h['quant']
     chunk_rows = h['chunk_rows']
     orig_rows  = h['orig_rows']
-    partition_col = index_entries[0]['part_col'] if index_entries else '__rows__'
+    first_entry = index_entries[0] if index_entries else {}
+    primary_col = first_entry.get('part_col', '__rows__')
+    # Multi-col partition: read partition_keys keys from first entry
+    if 'partition_keys' in first_entry:
+        part_cols = list(first_entry['partition_keys'].keys())
+    elif primary_col != '__rows__':
+        part_cols = [primary_col]
+    else:
+        part_cols = []
 
     # Find where chunks section ends (= start of sparse index JSON)
     idx_len = struct.unpack('>I', raw[-4-32-4:-4-32])[0]
@@ -799,23 +991,26 @@ def freeze_append(
         compressed  = _compress(raw_chunk, codec)
         sha         = _sha256(compressed)
 
-        if partition_col != '__rows__' and partition_col in df_chunk.columns:
-            pv = sorted(df_chunk[partition_col].unique().tolist())
-            part_key = str(pv[0]) if len(pv)==1 else f"{pv[0]}-{pv[-1]}"
+        partition_keys = _make_partition_keys(df_chunk, part_cols) if part_cols else {}
+        if primary_col != '__rows__' and primary_col in partition_keys:
+            part_key = partition_keys[primary_col]
         else:
             r0 = orig_rows + chunk_start
             part_key = f"rows_{r0}_{r0 + chunk_end - chunk_start - 1}"
 
-        new_index_entries.append({
-            'chunk_id':   len(index_entries) + len(new_chunk_blobs),
-            'row_start':  orig_rows + chunk_start,
-            'row_end':    orig_rows + chunk_end - 1,
-            'part_key':   part_key,
-            'part_col':   partition_col,
+        entry = {
+            'chunk_id':    len(index_entries) + len(new_chunk_blobs),
+            'row_start':   orig_rows + chunk_start,
+            'row_end':     orig_rows + chunk_end - 1,
+            'part_key':    part_key,
+            'part_col':    primary_col,
             'byte_offset': None,
-            'byte_len':   len(compressed),
-            'sha256':     sha.hex(),
-        })
+            'byte_len':    len(compressed),
+            'sha256':      sha.hex(),
+        }
+        if partition_keys:
+            entry['partition_keys'] = partition_keys
+        new_index_entries.append(entry)
         new_chunk_blobs.append((compressed, sha))
 
     # Calculate byte offsets for new chunks in the rewritten file
@@ -861,64 +1056,76 @@ def freeze_append(
 
 
 # ── AUDIT ─────────────────────────────────────────────────────────────────────
-def audit(path: str | os.PathLike) -> dict[str, Any]:
-    """Lê metadados de um arquivo .permafrost sem descomprimir nenhum chunk.
+_CODEC_NAME = {CODEC_ZSTD: 'zstd', CODEC_LZMA2: 'lzma2', CODEC_ZPAQ: 'zpaq'}
 
-    Opera apenas no header (primeiros ~128KB) e no sparse index (últimos ~8KB).
-    Um arquivo de 2 GB é auditado em < 1ms.
+
+def audit(path) -> dict:
+    """Le os metadados de um arquivo .permafrost sem descomprimir nenhum chunk.
+
+    Verifica o SHA-256 do header e do sparse index, mas nao toca nos dados dos
+    chunks. Util para inventario, monitoramento de custo e deteccao de bit-rot
+    nos metadados antes de qualquer operacao cara.
 
     Args:
-        path: Arquivo .permafrost a inspecionar.
+        path: Caminho do arquivo .permafrost.
 
     Returns:
-        Dicionário com metadados::
-
-            {
-                "version":        "1.2",
-                "codec":          "lzma2",
-                "quant":          0,
-                "freeze_date":    "2026-05-13T14:30:00",
-                "orig_rows":      80000,
-                "n_chunks":       16,
-                "chunk_rows":     5000,
-                "file_size_mb":   0.678,
-                "columns":        ["id", "data", "ano", ...],
-                "partition_col":  "ano",
-                "partition_keys": ["2020", "2021", ...],
-                "comment":        "meu comentário",
-                "index_entries":  [...],
-            }
+        Dicionario com version, codec, orig_rows, n_chunks, columns, comment,
+        freeze_ts, encrypted, partition_col, partition_cols, index_entries.
 
     Raises:
-        ValueError: Se o arquivo não for um .permafrost válido.
-
-    Example:
-        >>> info = pf.audit("vendas.permafrost")
-        >>> print(info["codec"], info["orig_rows"])
-        lzma2 80000
+        ValueError: Se o magic, header SHA-256 ou sparse index estiverem
+            corrompidos.
+        FileNotFoundError: Se o arquivo nao existir.
     """
-    with open(path,'rb') as f: raw=f.read()
-    h=_read_header(raw[:131072]); index=_read_sparse_index(raw)
-    codec_name={CODEC_LZMA2:'lzma2',CODEC_ZSTD:'zstd',CODEC_ZPAQ:'zpaq'}.get(h['codec'],'?')
-    lossy={}
-    stored_schema={}
-    for col,m in h['manifests'].items():
-        stored_schema[col]=m.get('dtype','object')
-        if m.get('predictor') in (PRED_FLOAT32, PRED_FLOAT16):
-            lossy[col]={'predictor':m['predictor'],
-                        'precision_bits':m.get('precision_bits',32),
-                        'max_abs_error':m.get('max_abs_error',0.0),
-                        'max_rel_error':m.get('max_rel_error',0.0)}
-    return {'version':f"{raw[4]}.{raw[5]}",'codec':codec_name,'quant':h['quant'],
-            'freeze_date':pd.Timestamp(h['freeze_ts'],unit='s').isoformat(),
-            'orig_rows':h['orig_rows'],'n_chunks':h['n_chunks'],
-            'chunk_rows':h['chunk_rows'],'file_size_mb':round(os.path.getsize(path)/1e6,3),
-            'columns':list(h['manifests'].keys()),'stored_schema':stored_schema,
-            'index_entries':index,
-            'partition_col':index[0]['part_col'] if index else None,
-            'partition_keys':[e['part_key'] for e in index],
-            'comment':h['comment'],
-            'encrypted':h['encrypted'],'kms':h['enc_kms'],'key_id':h['key_id'],
-            'edek_size':len(h.get('enc_dek', b'')),
-            'lossy_columns':lossy}
+    with open(path, 'rb') as f:
+        raw = f.read()
+    if raw[-4:] != EOF_MAGIC:
+        raise ValueError("EOF magic ausente")
+    h = _read_header(raw)
+    if _sha256(raw[:h['hdr_end']]) != h['hdr_sha_stored']:
+        raise ValueError("Header SHA-256 invalido")
+    index_entries = _read_sparse_index(raw)
 
+    # Determine partition columns from index entries
+    partition_cols = []
+    seen_cols = set()
+    for e in index_entries:
+        pk = e.get('partition_keys')
+        if pk:
+            for col in pk:
+                if col not in seen_cols:
+                    partition_cols.append(col)
+                    seen_cols.add(col)
+        elif e.get('part_col') and e['part_col'] != '__rows__':
+            col = e['part_col']
+            if col not in seen_cols:
+                partition_cols.append(col)
+                seen_cols.add(col)
+    partition_col = partition_cols[0] if partition_cols else None
+
+    ver = VERSION
+    version_str = f"{ver[0]}.{ver[1]}"
+    codec_name = _CODEC_NAME.get(h['codec'], str(h['codec']))
+
+    return {
+        'version':        version_str,
+        'codec':          codec_name,
+        'orig_rows':      h['orig_rows'],
+        'n_chunks':       h['n_chunks'],
+        'columns':        list(h['manifests'].keys()),
+        'comment':        h['comment'],
+        'freeze_ts':      h['freeze_ts'],
+        'freeze_date':    __import__('datetime').datetime.fromtimestamp(h['freeze_ts']).isoformat(),   # alias for catalog compatibility
+        'encrypted':      h['encrypted'],
+        'partition_col':  partition_col,
+        'partition_cols': partition_cols,
+        'quant':          h['quant'],
+        'chunk_rows':     h['chunk_rows'],
+        'file_size_mb':   round(len(raw) / 1e6, 3),
+        'partition_keys': sorted({e.get('part_key','') for e in index_entries if e.get('part_key') and e.get('part_col','') != '__rows__'}),
+        'kms':            h['enc_kms'],
+        'key_id':         h['key_id'],
+        'primary_key':    h.get('primary_key'),
+        'index_entries':  index_entries,
+    }
