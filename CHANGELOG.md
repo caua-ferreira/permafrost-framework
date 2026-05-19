@@ -5,6 +5,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0] - 2026-05-19
+
+### Added
+- **`.ice` declarative recipe format** — YAML files (`.ice` extension) that define a freeze
+  pipeline: source, output, codec, schedule, partition, owner, tags and more.
+  Mirrors the Airflow DAG folder discovery pattern.
+- `permafrost.ice` module: `IceRecipe` dataclass, `parse_file()`, `parse_dict()`, `validate()`
+- `LocalWatcher` — polls a local directory for `.ice` files; detects additions, modifications
+  and deletions via mtime+size fingerprint.
+- `S3Watcher` — polls an S3 prefix using ETags; auto-discovers `.ice` files without listing
+  the entire bucket on each scan. Requires `boto3` (`pip install permafrost-framework[s3]`).
+- `make_watcher(watch_path, ...)` factory — returns `S3Watcher` for `s3://` paths, `LocalWatcher` otherwise.
+- `PermafrostMaster` now accepts `watch_path` and `poll_interval` constructor arguments;
+  the watcher starts automatically on `master.run()` and stops on shutdown.
+- **REST endpoints on cluster master**:
+  - `GET /recipes` — list all loaded recipes
+  - `POST /recipes` — create a recipe (validated)
+  - `GET /recipes/{name}` — retrieve a single recipe
+  - `PUT /recipes/{name}` — partial update (merge + re-validate)
+  - `DELETE /recipes/{name}` — remove a recipe
+  - `POST /recipes/{name}/run` — trigger an immediate freeze job from a recipe
+- **CLI**: `permafrost cluster serve --watch <path> [--poll-interval <s>]`
+  - Accepts local paths or `s3://bucket/prefix/` for automatic recipe discovery
+- **CLI**: `permafrost freeze-recipe <file.ice> [--dry-run]`
+  - Parses and validates an `.ice` file, then runs the freeze pipeline
+- **Public API** additions to `permafrost` top-level:
+  - `load_ice(path)` — parse a `.ice` file from disk
+  - `load_ice_dict(raw)` — parse from an already-loaded dict
+  - `validate_ice(raw)` — returns list of `IceValidationError` without raising
+  - `ice_watcher(watch_path, ...)` — convenience wrapper for `make_watcher()`
+
+---
+
+## [1.3.1] - 2026-05-18
+
+### Fixed
+- Dynamic port allocation in cluster test fixtures to prevent conflicts in parallel test runs
+
+---
+
+## [1.3.0] - 2026-05-17
+
+### Added
+- `PermafrostCatalogServer` — HTTP REST API for the catalog (`permafrost catalog serve`)
+- Remote catalog backends for S3, GCS and Azure with LRU cache and versioning
+- Per-column codec profiles (`per_column_codec`, `CODEC_PROFILES`) for selective compression
+- `audit()` now returns `lossy_columns`, `edek_size` and `stored_schema`
+
+### Fixed
+- `audit()` return dict missing `lossy_columns`, `edek_size`, `stored_schema`
+- OpenSSF Scorecard configuration and download badge
+
+---
+
 ## [1.1.0] - 2026-05-17
 
 ### Changed (breaking — old names kept as deprecated aliases until v2.0)
