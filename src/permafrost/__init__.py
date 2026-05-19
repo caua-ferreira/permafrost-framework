@@ -159,6 +159,14 @@ from permafrost.cluster import (
     PermafrostClient,
 )
 
+from permafrost.ice import (
+    IceRecipe,
+    parse_file as load_ice,
+    parse_dict as load_ice_dict,
+    validate as validate_ice,
+    make_watcher as ice_watcher,
+)
+
 __all__ = [
     # Core
     "freeze", "freeze_append", "append", "unfreeze", "audit",

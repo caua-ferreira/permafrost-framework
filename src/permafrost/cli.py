@@ -52,6 +52,85 @@ def _header():
     except UnicodeEncodeError:
         console.print(f"[bold cyan]* Permafrost Data Framework[/] [dim]v{__version__}[/]")
 
+# ── FREEZE FROM .ICE RECIPE ───────────────────────────────────────────────────
+@app.command("freeze-recipe")
+def freeze_recipe(
+    recipe_path: str = typer.Argument(..., help="Caminho para o arquivo .ice (YAML)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Valida o .ice sem executar o freeze"),
+):
+    """Executa um freeze a partir de um arquivo .ice declarativo."""
+    _header()
+    from permafrost.ice import parse_file, ValidationError
+
+    if not os.path.exists(recipe_path):
+        console.print(f"[red]✗ Arquivo não encontrado: {recipe_path}[/]"); raise typer.Exit(1)
+
+    try:
+        recipe = parse_file(recipe_path)
+    except ValueError as exc:
+        console.print(f"[red]✗ {exc}[/]"); raise typer.Exit(1)
+
+    console.print(f"\n[bold]Recipe:[/]   [cyan]{recipe.name}[/]")
+    console.print(f"[bold]Source:[/]   [cyan]{recipe.source}[/]")
+    console.print(f"[bold]Output:[/]   [cyan]{recipe.output}[/]")
+    console.print(f"[bold]Codec:[/]    [yellow]{recipe.codec}[/]  [bold]Quant:[/] [yellow]{recipe.quant}[/]")
+    if recipe.schedule:
+        console.print(f"[bold]Schedule:[/] [yellow]{recipe.schedule}[/]")
+    if recipe.owner:
+        console.print(f"[bold]Owner:[/]    [dim]{recipe.owner}[/]")
+    console.print()
+
+    if dry_run:
+        console.print("[green]✓ .ice file is valid (dry run — no freeze executed)[/]\n")
+        raise typer.Exit(0)
+
+    if not recipe.enabled:
+        console.print("[yellow]⚠ Recipe is disabled (enabled: false) — skipping[/]\n")
+        raise typer.Exit(0)
+
+    # Delegate to the standard freeze flow using recipe fields
+    pf_freeze, _, _, SchemaDetector = _load()
+
+    codec_map = {"zstd": 0x01, "lzma2": 0x02, "lz4": 0x03,
+                 "snappy": 0x04, "fp16": 0x05, "bf16": 0x06,
+                 "int8": 0x07, "vault": 0x08}
+    codec_id = codec_map.get(recipe.codec, 0x01)
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  BarColumn(), TimeElapsedColumn(), console=console) as prog:
+
+        task1 = prog.add_task("Detectando schema...", total=None)
+        det = SchemaDetector()
+        df, dtype, _ = det.detect(recipe.source)
+        prog.update(task1, description=f"[green]Schema: {dtype.value} — {len(df):,} linhas × {len(df.columns)} colunas[/]", completed=True)
+
+        if recipe.partition_by and recipe.partition_by in df.columns:
+            task_sort = prog.add_task("Ordenando por partição...", total=None)
+            df = df.sort_values(recipe.partition_by).reset_index(drop=True)
+            prog.update(task_sort, description=f"[green]Ordenado por '{recipe.partition_by}'[/]", completed=True)
+
+        task2 = prog.add_task("Comprimindo...", total=None)
+        t0 = time.time()
+        metrics = pf_freeze(
+            df, recipe.output,
+            codec=codec_id, quant=recipe.quant,
+            chunk_rows=recipe.chunk_rows, partition_by=recipe.partition_by,
+        )
+        elapsed = time.time() - t0
+        prog.update(task2, description="[green]Compressão concluída[/]", completed=True)
+
+    tbl = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    tbl.add_column(style="dim"); tbl.add_column(style="bold")
+    tbl.add_row("Recipe",           recipe.name)
+    tbl.add_row("Linhas",           f"{metrics['rows']:,}")
+    tbl.add_row("Tamanho original", f"{metrics['original_mb']:.3f} MB")
+    tbl.add_row("Tamanho final",    f"[cyan]{metrics['stored_mb']:.3f} MB[/]")
+    tbl.add_row("Ratio",            f"[green bold]{metrics['ratio']:.2f}×[/]")
+    tbl.add_row("Tempo",            f"{elapsed:.2f}s")
+    console.print(Panel(tbl, title="[bold cyan]✓ Freeze concluído[/]", border_style="cyan"))
+    console.print(f"[dim]→ {recipe.output}[/]\n")
+
+
 # ── FREEZE ────────────────────────────────────────────────────────────────────
 @app.command()
 def freeze(
@@ -475,6 +554,40 @@ def catalog_serve(
     console.print("\n[dim]Pressione Ctrl+C para parar.[/]\n")
 
     uvicorn.run(srv.app, host=host, port=port, log_level=log_level)
+
+
+# ── CLUSTER MASTER ────────────────────────────────────────────────────────────
+@cluster_app.command("serve")
+def cluster_serve(
+    host:          str           = typer.Option("0.0.0.0",  "--host",          help="Bind address"),
+    port:          int           = typer.Option(8700,        "--port",          help="TCP port"),
+    secret_key:    Optional[str] = typer.Option(None,        "--secret-key",    help="Enable RBAC with this key", envvar="PERMAFROST_SECRET_KEY"),
+    watch:         Optional[str] = typer.Option(None,        "--watch",         help="Path or s3://bucket/prefix to watch for .ice files"),
+    poll_interval: float         = typer.Option(30.0,        "--poll-interval", help="Seconds between .ice watcher scans"),
+):
+    """Inicia o PermafrostMaster (cluster coordinator).
+
+    Examples:
+
+        permafrost cluster serve --watch ./recipes/
+
+        permafrost cluster serve --watch s3://my-bucket/ice/ --poll-interval 60
+    """
+    _header()
+    from permafrost.cluster import PermafrostMaster
+    console.print(f"[bold]Cluster Master[/] on [cyan]{host}:{port}[/]")
+    if watch:
+        console.print(f"[bold]Watching:[/]  [cyan]{watch}[/]  (every {poll_interval}s)")
+    if secret_key:
+        console.print("[bold]RBAC:[/]      [green]enabled[/]")
+    console.print()
+    master = PermafrostMaster(
+        host=host, port=port,
+        secret_key=secret_key,
+        watch_path=watch,
+        poll_interval=poll_interval,
+    )
+    master.run()
 
 
 # ── CLUSTER RBAC ──────────────────────────────────────────────────────────────

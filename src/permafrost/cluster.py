@@ -27,6 +27,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 import pandas as pd, numpy as np
 
+from permafrost.ice import IceRecipe, parse_dict, parse_file, validate, make_watcher
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -140,18 +142,38 @@ class PermafrostMaster:
     DEFAULT_CHUNK = 50_000
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8700,
-                 secret_key: Optional[str] = None) -> None:
+                 secret_key: Optional[str] = None,
+                 watch_path: Optional[str] = None,
+                 poll_interval: float = 30.0) -> None:
         self.host = host
         self.port = port
         self.jobs:    Dict[str, Job]        = {}
         self.workers: Dict[str, WorkerInfo] = {}
+        self.recipes: Dict[str, IceRecipe]  = {}   # name → IceRecipe
         self._task_queue: queue.Queue       = queue.Queue()
         self._lock = threading.RLock()
         self._rbac = None
+        self._watcher = None
         if secret_key:
             from permafrost.rbac import RBACManager
             self._rbac = RBACManager(secret_key)
         self.app = self._build_app()
+        if watch_path:
+            self._watcher = make_watcher(
+                watch_path, poll_interval,
+                on_add=self._on_ice_add,
+                on_remove=self._on_ice_remove,
+            )
+
+    def _on_ice_add(self, recipe: IceRecipe) -> None:
+        with self._lock:
+            self.recipes[recipe.name] = recipe
+        print(f"  [Master] Recipe loaded from watcher: {recipe.name}")
+
+    def _on_ice_remove(self, name: str) -> None:
+        with self._lock:
+            self.recipes.pop(name, None)
+        print(f"  [Master] Recipe removed by watcher: {name}")
 
     def _build_app(self) -> FastAPI:
         """Constrói e configura a aplicação FastAPI com todas as rotas REST.
@@ -350,6 +372,100 @@ class PermafrostMaster:
             removed = self._rbac.remove_user(username)
             return {"removed": username, "existed": removed}
 
+        # ── Recipes (declarative .ice schedule definitions) ───────────────────
+
+        @app.get("/recipes")
+        def list_recipes(authorization: Optional[str] = Header(None)) -> list:
+            _auth(authorization)
+            with self._lock:
+                return [r.to_dict() for r in self.recipes.values()]
+
+        @app.get("/recipes/{name}")
+        def get_recipe(name: str,
+                       authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization)
+            with self._lock:
+                if name not in self.recipes:
+                    raise HTTPException(404, f"Recipe '{name}' not found")
+                return self.recipes[name].to_dict()
+
+        @app.post("/recipes")
+        def create_recipe(data: dict,
+                          authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_freeze=True)
+            errors = validate(data)
+            if errors:
+                raise HTTPException(422, detail=[str(e) for e in errors])
+            recipe = parse_dict(data)
+            with self._lock:
+                if recipe.name in self.recipes:
+                    raise HTTPException(409, f"Recipe '{recipe.name}' already exists")
+                self.recipes[recipe.name] = recipe
+            print(f"  [Master] Recipe created via API: {recipe.name}")
+            return recipe.to_dict()
+
+        @app.put("/recipes/{name}")
+        def update_recipe(name: str, data: dict,
+                          authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_freeze=True)
+            with self._lock:
+                if name not in self.recipes:
+                    raise HTTPException(404, f"Recipe '{name}' not found")
+                existing = self.recipes[name]
+                # Merge: allow partial updates
+                merged = {**existing.to_dict(), **data, "name": name}
+                merged.pop("source_type", None)
+                errors = validate(merged)
+                if errors:
+                    raise HTTPException(422, detail=[str(e) for e in errors])
+                updated = parse_dict(merged, source_file=existing.source_file)
+                updated.source_etag    = existing.source_etag
+                updated.discovered_at  = existing.discovered_at
+                self.recipes[name] = updated
+            return updated.to_dict()
+
+        @app.delete("/recipes/{name}")
+        def delete_recipe(name: str,
+                          authorization: Optional[str] = Header(None)) -> dict:
+            _auth(authorization, require_freeze=True)
+            with self._lock:
+                if name not in self.recipes:
+                    raise HTTPException(404, f"Recipe '{name}' not found")
+                self.recipes.pop(name)
+            print(f"  [Master] Recipe deleted: {name}")
+            return {"deleted": name}
+
+        @app.post("/recipes/{name}/run")
+        def run_recipe(name: str, background_tasks: BackgroundTasks,
+                       authorization: Optional[str] = Header(None)) -> dict:
+            """Immediately submit a job from a recipe."""
+            _auth(authorization, require_freeze=True)
+            with self._lock:
+                if name not in self.recipes:
+                    raise HTTPException(404, f"Recipe '{name}' not found")
+                recipe = self.recipes[name]
+                if not recipe.enabled:
+                    raise HTTPException(400, f"Recipe '{name}' is disabled")
+            job_id = str(uuid.uuid4())[:8]
+            payload = recipe.to_job_payload()
+            config = {
+                "codec":        payload["codec"],
+                "quant":        payload["quant"],
+                "partition_by": payload.get("partition_by"),
+                "chunk_rows":   payload["chunk_rows"],
+            }
+            job = Job(
+                job_id=job_id,
+                source_path=payload["source_path"],
+                output_path=payload["output_path"],
+                config=config,
+            )
+            with self._lock:
+                self.jobs[job_id] = job
+            background_tasks.add_task(self._plan_and_schedule, job_id)
+            print(f"  [Master] Recipe '{name}' triggered → job {job_id}")
+            return {"job_id": job_id, "status": "pending", "recipe": name}
+
         return app
 
     def _plan_and_schedule(self, job_id: str) -> None:
@@ -501,8 +617,14 @@ class PermafrostMaster:
             **kwargs: Parâmetros extras repassados para ``uvicorn.run``
                 (ex.: ``workers``, ``ssl_keyfile``).
         """
-        uvicorn.run(self.app, host=self.host, port=self.port,
-                    log_level="warning", **kwargs)
+        if self._watcher:
+            self._watcher.start()
+        try:
+            uvicorn.run(self.app, host=self.host, port=self.port,
+                        log_level="warning", **kwargs)
+        finally:
+            if self._watcher:
+                self._watcher.stop()
 
 
 # ── WORKER ────────────────────────────────────────────────────────────────────
