@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "permafrost-framework"
-version = "1.3.1"
+version = "1.4.0"
 description = "Distributed intelligent compression for long-term data archival"
 readme = "README.md"
 license = "Apache-2.0"
