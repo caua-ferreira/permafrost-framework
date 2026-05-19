@@ -435,6 +435,48 @@ def catalog_verify(
     console.print()
 
 
+@cat_app.command("serve")
+def catalog_serve(
+    catalog_db: str = typer.Option(".permafrost_catalog.db", "--db", "-d",
+                                   help="Caminho do arquivo DuckDB do catálogo"),
+    host: str       = typer.Option("127.0.0.1", "--host",
+                                   help="Endereço de bind (use 0.0.0.0 para rede)"),
+    port: int       = typer.Option(8800, "--port", "-p",
+                                   help="Porta TCP do servidor"),
+    log_level: str  = typer.Option("info", "--log-level",
+                                   help="Nível de log: debug | info | warning | error"),
+):
+    """Sobe um servidor REST (FastAPI/uvicorn) para o PermafrostCatalog.
+
+    Expõe todas as operações do catálogo via HTTP/JSON.
+    Documentação interativa disponível em http://<host>:<port>/docs após iniciar.
+
+    Exemplos:
+
+        permafrost catalog serve
+
+        permafrost catalog serve --db /data/prod.db --host 0.0.0.0 --port 8800
+    """
+    _header()
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]uvicorn não encontrado. Instale com: pip install uvicorn[/]")
+        raise typer.Exit(1)
+
+    from permafrost.catalog_server import PermafrostCatalogServer
+    srv = PermafrostCatalogServer(catalog_db)
+
+    console.print(f"\n[bold cyan]Permafrost Catalog Server[/]")
+    console.print(f"  Catálogo : [yellow]{catalog_db}[/]")
+    console.print(f"  Endereço : [yellow]http://{host}:{port}[/]")
+    console.print(f"  Docs     : [yellow]http://{host}:{port}/docs[/]")
+    console.print(f"  Health   : [yellow]http://{host}:{port}/health[/]")
+    console.print("\n[dim]Pressione Ctrl+C para parar.[/]\n")
+
+    uvicorn.run(srv.app, host=host, port=port, log_level=log_level)
+
+
 # ── CLUSTER RBAC ──────────────────────────────────────────────────────────────
 @cluster_app.command("add-user")
 def cluster_add_user(

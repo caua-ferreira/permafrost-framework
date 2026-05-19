@@ -6,6 +6,25 @@ Versioning follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ---
 
+## [1.3.1] — 2026-05-18
+
+### Added
+- **`PermafrostCatalogServer`** — REST API (FastAPI) sobre o `PermafrostCatalog`
+  - `PermafrostCatalogServer(db_path, backend=None)` — wraps catalog in an HTTP server
+  - 12 endpoints: `GET /health`, `POST /datasets/register`, `POST /datasets/register_dir`,
+    `GET /datasets`, `GET /datasets/{name}`, `GET /datasets/{name}/versions`,
+    `GET /datasets/{name}/chunks`, `GET /datasets/{name}/integrity`,
+    `DELETE /datasets/{name}`, `GET /stats`, `GET /cost_report`, `POST /sql`, `GET /search`
+  - Interactive Swagger UI at `/docs`, ReDoc at `/redoc`
+  - All DataFrames serialized to JSON with NaN → null handling
+  - Exported as `pf.PermafrostCatalogServer`
+- **`permafrost catalog serve`** CLI command
+  - `permafrost catalog serve --db catalog.db --host 0.0.0.0 --port 8800 --log-level info`
+  - Prints URL and docs link on startup
+- 37 new integration tests in `tests/test_catalog_server.py`
+
+---
+
 ## [1.3.0] — 2026-05-18
 
 ### Added

@@ -212,6 +212,33 @@ pf.freeze(df_2023, "history.permafrost")
 pf.append(df_2024, "history.permafrost")   # adds without re-freezing
 ```
 
+### Catalog Server (REST API)
+
+```python
+# Start the catalog REST API — exposes all catalog operations over HTTP
+import uvicorn
+from permafrost import PermafrostCatalogServer
+
+srv = PermafrostCatalogServer("catalog.db")
+uvicorn.run(srv.app, host="0.0.0.0", port=8800)
+# Interactive docs available at http://localhost:8800/docs
+```
+
+```bash
+# Or via CLI
+permafrost catalog serve --db catalog.db --host 0.0.0.0 --port 8800
+```
+
+```bash
+# Then call it from anywhere — no Python SDK needed
+curl http://localhost:8800/health
+curl http://localhost:8800/datasets
+curl http://localhost:8800/cost_report?tier=glacier_deep
+curl -X POST http://localhost:8800/datasets/register \
+     -H "Content-Type: application/json" \
+     -d '{"path": "/data/sales.permafrost", "name": "sales", "version": "v2024"}'
+```
+
 ### Distributed Cluster
 
 ```python
@@ -377,6 +404,24 @@ The format is self-describing — readable without external documentation:
 | `pf.thaw_from(uri, filter=None)` | Decompress from cloud with Range Request |
 | `pf.audit_remote(uri)` | Audit remote file without downloading everything |
 | `pf.storage_from_uri(uri)` | Returns the appropriate storage adapter for the URI |
+
+### Catalog Server
+
+| Class/Endpoint | Description |
+|----------------|-------------|
+| `PermafrostCatalogServer(db_path)` | Create a FastAPI server wrapping a PermafrostCatalog |
+| `GET /health` | Server status and dataset count |
+| `POST /datasets/register` | Register a file (body: `path`, `name`, `version`, `tags`) |
+| `POST /datasets/register_dir` | Register all `.permafrost` files in a directory |
+| `GET /datasets` | List/search datasets (query params mirror `catalog.search()`) |
+| `GET /datasets/{name}/versions` | All registered versions of a dataset |
+| `GET /datasets/{name}/chunks` | Sparse index entries for a dataset |
+| `GET /datasets/{name}/integrity` | SHA-256 integrity check for a dataset |
+| `DELETE /datasets/{name}` | Remove dataset from catalog (file not deleted) |
+| `GET /stats` | Aggregate metrics (total datasets, rows, MB) |
+| `GET /cost_report` | Cost estimate by storage tier |
+| `POST /sql` | Execute SQL directly against the catalog DuckDB |
+| `GET /search` | Search alias with query params |
 
 ### Catalog
 

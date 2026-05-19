@@ -28,7 +28,7 @@ Links:
     Docs:   https://github.com/caua-ferreira/permafrost-framework/tree/main/docs
 """
 
-__version__  = "1.3.0"
+__version__  = "1.3.1"
 __author__   = "Permafrost Contributors"
 __license__  = "Apache-2.0"
 
@@ -123,6 +123,7 @@ from permafrost.catalog_backends import (
     GCSCatalogBackend,
     AzureCatalogBackend,
 )
+from permafrost.catalog_server import PermafrostCatalogServer
 
 # ── Cloud storage adapters ────────────────────────────────────────────────────
 from permafrost.storage import (
@@ -180,7 +181,7 @@ __all__ = [
     # Context (high-level API)
     "PermafrostContext",
     # Catalog
-    "PermafrostCatalog",
+    "PermafrostCatalog", "PermafrostCatalogServer",
     "CatalogBackend", "LocalCatalogBackend",
     "S3CatalogBackend", "GCSCatalogBackend", "AzureCatalogBackend",
     # Storage
