@@ -62,9 +62,10 @@ Query only year 2022 → 42M rows in 5.7 min — read 20% of the file, 80% never
 - **Remote catalog backends** — `S3CatalogBackend`, `GCSCatalogBackend`, `AzureCatalogBackend` with ETag cache and LRU eviction
 - **DuckDB Catalog** — metadata search across hundreds of remote files; versioned datasets with `version=` and `.versions()`
 - **Streaming** — process datasets larger than RAM with `freeze_file()` and `peek()`
+- **Declarative recipes (`.ice`)** — YAML files that define a freeze pipeline (source, output, codec, schedule, owner…); auto-discovered from a local directory or S3 prefix, mirroring Airflow DAG folder pattern
 - **Distributed cluster** — Master + Workers via FastAPI; processes 1 TB in parallel with N workers
 - **Spark DataSource v2** — native integration with PySpark 4.0+ with sparse index pushdown
-- **Full CLI** — `permafrost freeze / thaw / audit / verify / catalog` with rich output
+- **Full CLI** — `permafrost freeze / thaw / audit / verify / catalog / freeze-recipe` with rich output
 
 ---
 
@@ -239,6 +240,77 @@ curl -X POST http://localhost:8800/datasets/register \
      -d '{"path": "/data/sales.permafrost", "name": "sales", "version": "v2024"}'
 ```
 
+### Declarative Recipes (`.ice`)
+
+Define your freeze pipelines as YAML files and let the cluster master discover them automatically — no API calls needed.
+
+```yaml
+# climate-daily.ice
+name: climate-daily
+source: s3://raw-data/climate/
+output: s3://frozen/climate.permafrost
+codec: zstd
+chunk_rows: 250000
+schedule: "0 2 * * *"
+partition_by: date
+owner: data-eng@acme.com
+tags: [climate, daily]
+```
+
+```bash
+# Master picks up all .ice files from S3 automatically
+permafrost cluster serve --watch s3://my-bucket/ice/ --poll-interval 30
+
+# Or from a local recipes directory
+permafrost cluster serve --watch ./recipes/
+
+# Run a single recipe from the CLI
+permafrost freeze-recipe climate-daily.ice
+
+# Dry-run to validate without executing
+permafrost freeze-recipe climate-daily.ice --dry-run
+```
+
+```python
+# Or use the Python API
+import permafrost as pf
+
+recipe = pf.load_ice("climate-daily.ice")
+errors = pf.validate_ice({"name": "x", "source": "s3://...", "output": "s3://...", "codec": "zstd"})
+
+# Watch a directory from code
+watcher = pf.ice_watcher(
+    "s3://my-bucket/ice/",
+    poll_interval=30,
+    on_add=lambda r: print(f"New recipe: {r.name}"),
+    on_remove=lambda n: print(f"Removed: {n}"),
+)
+watcher.start()
+```
+
+#### `.ice` schema reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Unique recipe identifier |
+| `source` | string | yes | Input path (local, `s3://`, `gs://`) |
+| `output` | string | yes | Output `.permafrost` path |
+| `codec` | string | yes | `zstd` · `lzma2` · `lz4` · `snappy` · `fp16` · `bf16` · `int8` · `vault` |
+| `quant` | int | no | Quantization level (0 = lossless) |
+| `chunk_rows` | int | no | Rows per chunk (default 100 000, min 1 000) |
+| `partition_by` | string | no | Column name for sparse index |
+| `schedule` | string | no | Cron expression — `"0 2 * * *"` |
+| `enabled` | bool | no | `true` by default; set `false` to pause |
+| `timezone` | string | no | IANA timezone for schedule (e.g. `America/Sao_Paulo`) |
+| `workers` | int | no | Override worker count for this recipe |
+| `priority` | string | no | `low` · `normal` · `high` |
+| `retry` | int | no | Retry attempts on failure (default 2) |
+| `timeout_minutes` | int | no | Abort job after N minutes (0 = no limit) |
+| `owner` | string | no | Owner email for alerting |
+| `tags` | list | no | Free-form labels |
+
+---
+
 ### Distributed Cluster
 
 ```python
@@ -279,6 +351,14 @@ permafrost verify sales.permafrost
 permafrost catalog register s3://bucket/cold/
 permafrost catalog search --name sales
 permafrost catalog cost-report --tier glacier_deep
+
+# Declarative recipes
+permafrost freeze-recipe dataset.ice
+permafrost freeze-recipe dataset.ice --dry-run
+
+# Cluster with S3 recipe auto-discovery
+permafrost cluster serve --watch s3://my-bucket/ice/ --poll-interval 30
+permafrost cluster serve --watch ./recipes/ --host 0.0.0.0 --port 8700
 ```
 
 ---
@@ -445,11 +525,31 @@ The format is self-describing — readable without external documentation:
 
 | Class/Method | Description |
 |--------------|-------------|
-| `PermafrostMaster(host, port)` | Start the cluster master node |
+| `PermafrostMaster(host, port, watch_path=None, poll_interval=30)` | Start master; `watch_path` enables auto-discovery of `.ice` recipes |
 | `PermafrostWorker(master_url)` | Start a worker that registers with the master |
 | `PermafrostClient(master_url)` | Client to submit jobs to the cluster |
 | `client.freeze(input, output)` | Submit a freeze job to the cluster |
 | `client.wait(job_id)` | Wait for job completion |
+
+#### Recipe endpoints (`/recipes`)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /recipes` | List all loaded recipes |
+| `POST /recipes` | Create a recipe (validated against `.ice` schema) |
+| `GET /recipes/{name}` | Retrieve a single recipe |
+| `PUT /recipes/{name}` | Partial update — merge fields and re-validate |
+| `DELETE /recipes/{name}` | Remove a recipe |
+| `POST /recipes/{name}/run` | Trigger an immediate freeze job from a recipe |
+
+#### `.ice` Public API
+
+| Function | Description |
+|----------|-------------|
+| `pf.load_ice(path)` | Parse a `.ice` file from disk → `IceRecipe` |
+| `pf.load_ice_dict(raw)` | Parse from an already-loaded dict → `IceRecipe` |
+| `pf.validate_ice(raw)` | Validate without raising — returns `list[IceValidationError]` |
+| `pf.ice_watcher(watch_path, ...)` | Create and return a `LocalWatcher` or `S3Watcher` |
 
 ### Codecs and profiles
 
