@@ -48,3 +48,15 @@ sandbox/
 HANDOFF.md
 KNOWN_ISSUES.md
 test_results_full.txt
+
+# Plataforma web — produto comercial, não é parte do framework open-source
+platform/
+
+# Artefatos de cobertura parcial
+coverage_partial.json
+
+# Notebooks convertidos para .py — não versionar os .ipynb
+examples/*.ipynb
+
+# Scripts de push locais — não versionar
+*.bat

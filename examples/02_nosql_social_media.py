@@ -70,3 +70,11 @@ print(f"  Vantagem Permafrost:    +{(lzma_mb-pf_mb)/lzma_mb*100:.1f}% + thaw sel
 df_back = pf.unfreeze("/tmp/posts.permafrost", verify=True)
 print(f"\n[3] Thaw: {len(df_back):,} posts recuperados ✓")
 print("\n✓ Exemplo NoSQL concluído!")
+
+# ── Query SQL sobre o arquivo ─────────────────────────────────────────────────
+print("\n[4] Query SQL sobre o arquivo .permafrost...")
+df_q = pf.query(
+    "SELECT platform, COUNT(*) as posts, AVG(likes) as avg_likes "
+    "FROM '/tmp/posts.permafrost' GROUP BY platform ORDER BY posts DESC"
+)
+print(df_q.to_string(index=False))

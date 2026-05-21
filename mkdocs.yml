@@ -100,6 +100,9 @@ nav:
     - Catalog (DuckDB): user-guide/catalog.md
     - Cluster Distribuído: user-guide/cluster.md
     - Encryption (AES-256-GCM): user-guide/encryption.md
+    - Append (Incremental Write): user-guide/append.md
+    - Diff (Compare Versions): user-guide/diff.md
+    - Query SQL: user-guide/query.md
   - API Reference:
     - PermafrostContext (v1.0): api-reference/context.md
     - Core (freeze/thaw/audit): api-reference/core.md

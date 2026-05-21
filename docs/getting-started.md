@@ -23,7 +23,7 @@ Verifique a instalação:
 
 ```python
 import permafrost as pf
-print(pf.__version__)   # 1.0.1
+print(pf.__version__)   # 1.2.2
 ```
 
 ---
@@ -242,3 +242,89 @@ Veja a [referência completa do PermafrostContext](api-reference/context.md).
   — AES-256-GCM per chunk, KMS providers
 
 </div>
+
+---
+
+## 9. Append — escrita incremental
+
+Adicione novos dados a um arquivo existente sem precisar re-comprimir tudo:
+
+```python
+# Arquivo já existe com 50.000 linhas
+result = pf.append("vendas.pf", df_novos_registros)
+
+print(f"Total de linhas: {result['total_rows']:,}")
+print(f"Novos chunks:    {result['new_chunks']}")
+```
+
+O `append()` preserva todos os dados originais, verifica integridade (SHA-256) e atualiza o sparse index. O schema novo precisa ser compatível com o original.
+
+Veja o [Guia de Append](user-guide/append.md) e o [exemplo completo](../examples/05_append_diff.py).
+
+---
+
+## 10. Diff — comparar versões
+
+Compare dois arquivos `.permafrost` e veja o que mudou:
+
+```python
+resultado = pf.diff("vendas_jan.pf", "vendas_fev.pf", output="summary")
+print(resultado)
+# {'deleted': 42, 'inserted': 89, 'changed': 317, 'unchanged': 49552}
+
+# Ou como DataFrame com coluna _diff
+df = pf.diff("vendas_jan.pf", "vendas_fev.pf", output="dataframe")
+print(df.groupby("_diff").size())
+```
+
+O diff usa a `primary_key` embutida no arquivo para fazer o join. Sem primary key, usa posição e emite um aviso. Veja [Guia de Diff](user-guide/diff.md).
+
+---
+
+## 11. Query SQL
+
+Execute SQL diretamente sobre arquivos `.permafrost`/`.pf` usando DuckDB:
+
+```python
+df = pf.query("""
+    SELECT regiao,
+           COUNT(*)               AS transacoes,
+           ROUND(SUM(total), 2)   AS receita
+    FROM 'vendas.pf'
+    GROUP BY regiao
+    ORDER BY receita DESC
+""")
+
+# JOIN entre dois arquivos
+df = pf.query("""
+    SELECT v.regiao, SUM(v.total) AS receita, m.meta
+    FROM 'vendas.pf' v
+    JOIN 'metas.pf' m ON v.regiao = m.regiao
+    GROUP BY v.regiao, m.meta
+""")
+```
+
+Não é necessário chamar `unfreeze()` antes — o motor descomprime apenas os chunks que o predicado de filtro precisar. Veja [Guia de Query](user-guide/query.md).
+
+---
+
+## 12. Exportar para CSV ou XLSX
+
+O `unfreeze()` aceita `output_format` para exportar diretamente sem passar por DataFrame:
+
+```python
+# CSV com separador personalizado (padrão: ',')
+csv_bytes = pf.unfreeze("vendas.pf", filter={"ano": 2024},
+                         output_format="csv", sep=";")
+
+with open("vendas_2024.csv", "wb") as f:
+    f.write(csv_bytes)
+
+# Excel
+xlsx_bytes = pf.unfreeze("vendas.pf", filter={"ano": 2024},
+                          output_format="xlsx")
+
+with open("vendas_2024.xlsx", "wb") as f:
+    f.write(xlsx_bytes)
+```
+

@@ -60,3 +60,17 @@ for batch in pf.peek("/tmp/streaming_demo.permafrost", batch_size=30_000):
 print(f"  {total_batches} batches de 30k = {total_rows:,} linhas ✓")
 
 print("\n✓ Exemplo streaming concluído!")
+
+# ── Append incremental ao arquivo ─────────────────────────────────────────────
+print("\n[4] append() — adicionar novos dados sem re-freeze...")
+np.random.seed(77)
+n_extra = 20_000
+df_extra = pd.DataFrame({
+    "id":     np.arange(TOTAL_ROWS + 1, TOTAL_ROWS + n_extra + 1, dtype="int32"),
+    "total":  np.round(np.random.uniform(1, 50_000, n_extra), 2),
+    "status": np.random.choice(["Ativo", "Cancelado", "Pendente"], n_extra),
+    "canal":  np.random.choice(["Online", "Loja", "App"], n_extra),
+    "regiao": np.random.choice(["Norte", "Sul", "Leste", "Oeste"], n_extra),
+})
+res = pf.append("/tmp/streaming_demo.permafrost", df_extra)
+print(f"  Total após append: {res['total_rows']:,} linhas ({n_extra:,} novas)")
